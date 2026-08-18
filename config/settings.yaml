@@ -1,0 +1,16 @@
+filename:
+  # ISO 19650-2: Project-Originator-Volume-Level-Type-Role-Number
+  field_count: 7
+  # Preliminary P01 / contractual C02, or a single letter revision.
+  revision_pattern: "(?:[PC]\\d{2}|[A-Z]\\d?)"
+
+extraction:
+  min_layout_score: 0.7
+  first_page_only: true
+
+compare:
+  fields:
+    document_reference: required
+    revision: required
+    # Title is often omitted from the filename; only compare when both sides have one.
+    title: if_both_present

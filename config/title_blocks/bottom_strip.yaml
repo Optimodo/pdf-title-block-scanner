@@ -1,0 +1,27 @@
+id: bottom_strip
+name: Full-width bottom strip title block
+min_score: 0.7
+region:
+  left: 0.0
+  top: 0.82
+  right: 1.0
+  bottom: 1.0
+anchors:
+  - DOCUMENT NUMBER
+  - TITLE
+  - REVISION
+required_anchor_groups:
+  - [DOCUMENT NUMBER, DOCUMENT NO, DRAWING NUMBER]
+  - [REVISION, REV]
+fields:
+  document_reference:
+    labels: [DOCUMENT NUMBER, DOCUMENT NO, DRAWING NUMBER]
+    direction: auto
+    pattern: "[A-Z0-9]+(?:-[A-Z0-9]+){6}"
+  title:
+    labels: [TITLE, DRAWING TITLE]
+    direction: auto
+  revision:
+    labels: [REVISION, REV]
+    direction: auto
+    pattern: "(?:[PC]\\d{2}|[A-Z]\\d?)"

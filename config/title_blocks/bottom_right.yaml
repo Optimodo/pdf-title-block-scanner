@@ -1,0 +1,27 @@
+id: bottom_right
+name: Bottom-right title block
+min_score: 0.7
+region:
+  left: 0.62
+  top: 0.70
+  right: 1.0
+  bottom: 1.0
+anchors:
+  - DRAWING NO
+  - DRAWING TITLE
+  - REV
+required_anchor_groups:
+  - [DRAWING NO, DRAWING NUMBER, DRG NO, DOCUMENT NO]
+  - [REV, REVISION]
+fields:
+  document_reference:
+    labels: [DRAWING NO, DRAWING NUMBER, DRG NO, DOCUMENT NO]
+    direction: auto
+    pattern: "[A-Z0-9]+(?:-[A-Z0-9]+){6}"
+  title:
+    labels: [DRAWING TITLE, TITLE]
+    direction: auto
+  revision:
+    labels: [REV, REVISION]
+    direction: auto
+    pattern: "(?:[PC]\\d{2}|[A-Z]\\d?)"
