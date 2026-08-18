@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from drawing_qa.checker import check_pdf, check_paths
+from drawing_qa.checker import check_pdf, check_paths, iter_pdfs
 from drawing_qa.config_loader import load_config
 from drawing_qa.models import CheckStatus
 from drawing_qa.report import write_report
@@ -88,3 +88,13 @@ def test_excel_report_created(tmp_path: Path, config_dir: Path):
     assert wb["All documents"].max_row == 3  # header + 2 rows
     assert wb["Matches"].max_row == 2
     assert wb["Needs attention"].max_row == 2
+
+
+def test_iter_pdfs_is_not_recursive(tmp_path: Path):
+    write_plain_pdf(tmp_path / "ABC-WXY-ZZ-00-DR-A-0001-P01.pdf")
+    nested = tmp_path / "nested"
+    write_plain_pdf(nested / "ABC-WXY-ZZ-00-DR-A-0002-P01.pdf")
+    found = iter_pdfs(tmp_path, recursive=False)
+    assert [p.name for p in found] == ["ABC-WXY-ZZ-00-DR-A-0001-P01.pdf"]
+    found_all = iter_pdfs(tmp_path, recursive=True)
+    assert len(found_all) == 2

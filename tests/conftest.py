@@ -2,9 +2,9 @@ from pathlib import Path
 
 import pytest
 
-CONFIG_DIR = Path(__file__).resolve().parents[1] / "config"
+from drawing_qa.paths import bundled_config_dir
 
 
 @pytest.fixture
 def config_dir() -> Path:
-    return CONFIG_DIR
+    return bundled_config_dir()

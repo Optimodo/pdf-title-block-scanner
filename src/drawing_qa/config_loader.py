@@ -7,6 +7,7 @@ from pathlib import Path
 import yaml
 
 from drawing_qa.models import FieldSpec, RectFrac, TitleBlockLayout
+from drawing_qa.paths import resolve_config_dir
 
 
 @dataclass
@@ -61,7 +62,9 @@ def load_layout(path: Path) -> TitleBlockLayout:
     )
 
 
-def load_config(config_dir: Path) -> AppConfig:
+def load_config(config_dir: Path | None = None) -> AppConfig:
+    if config_dir is None:
+        config_dir = resolve_config_dir()
     settings_path = config_dir / "settings.yaml"
     if not settings_path.exists():
         raise FileNotFoundError(f"Missing settings file: {settings_path}")

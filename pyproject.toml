@@ -20,12 +20,19 @@ dependencies = [
 dev = [
     "pytest>=8.0",
 ]
+build = [
+    "pyinstaller>=6.0",
+]
 
 [project.scripts]
 drawing-qa = "drawing_qa.cli:main"
+tbcheck = "drawing_qa.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+drawing_qa = ["default_config/**/*.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
