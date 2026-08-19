@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from drawing_qa.checker import check_pdf, check_paths, iter_pdfs
+from drawing_qa.checker import check_paths, check_pdf, iter_pdfs
 from drawing_qa.config_loader import load_config
 from drawing_qa.models import CheckStatus, Confidence
 from drawing_qa.report import write_report

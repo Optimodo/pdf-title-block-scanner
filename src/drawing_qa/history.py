@@ -164,11 +164,7 @@ def detect_revision_history(words: list[Word], spec: HistorySpec | None = None) 
         bbox = bbox.union(extra)
     # Include a header line just above the first data row when present.
     first_top = min(row.bbox.y0 for row in cluster if row.bbox)
-    header_words = [
-        word
-        for word in words
-        if first_top - 18 <= word.cy < first_top - 1
-    ]
+    header_words = [word for word in words if first_top - 18 <= word.cy < first_top - 1]
     if header_words:
         header_box = bbox_of(header_words)
         if header_box:
@@ -181,9 +177,7 @@ def detect_revision_history(words: list[Word], spec: HistorySpec | None = None) 
         heading_box = bbox_of(heading_words)
         if heading_box:
             result.bbox = bbox.union(heading_box)
-    result.notes.append(
-        f"Revision history: {len(cluster)} row(s); latest {latest.revision or '?'}"
-    )
+    result.notes.append(f"Revision history: {len(cluster)} row(s); latest {latest.revision or '?'}")
     older = [row.revision for row in cluster if row.revision != latest.revision]
     if older:
         result.notes.append("Older history revisions ignored: " + ", ".join(dict.fromkeys(older)))

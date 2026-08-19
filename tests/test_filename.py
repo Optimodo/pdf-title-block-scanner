@@ -74,9 +74,7 @@ def test_title_then_trailing_revision():
 
 
 def test_building_code_in_title_is_not_treated_as_revision():
-    parsed = parse_filename(
-        "WCR-MBS-B7-XX-DR-M-5301 - B7 - Mechanical Services Layout_C01.pdf"
-    )
+    parsed = parse_filename("WCR-MBS-B7-XX-DR-M-5301 - B7 - Mechanical Services Layout_C01.pdf")
     assert parsed.parse_ok
     assert parsed.document_reference == "WCR-MBS-B7-XX-DR-M-5301"
     assert parsed.title == "B7 - Mechanical Services Layout"

@@ -132,10 +132,14 @@ def compare_history(titleblock: TitleBlockFields) -> tuple[list[FieldComparison]
     for item in comparisons:
         if item.name == "history_revision" and item.matched is False:
             mismatched = True
-            notes.append(f"History latest revision {item.titleblock_value} != current {item.filename_value}")
+            notes.append(
+                f"History latest revision {item.titleblock_value} != current {item.filename_value}"
+            )
         elif item.name == "history_date" and item.matched is False:
             mismatched = True
-            notes.append(f"History latest date {item.titleblock_value} != current {item.filename_value}")
+            notes.append(
+                f"History latest date {item.titleblock_value} != current {item.filename_value}"
+            )
         elif item.name == "history_suitability" and item.matched is False:
             mismatched = True
             notes.append(
@@ -196,9 +200,8 @@ def compare_document(
             elif item.matched is False:
                 mismatch = True
                 required_fail = True
-        elif rule in {"if_both_present", "optional"}:
-            if item.matched is False:
-                mismatch = True
+        elif rule in {"if_both_present", "optional"} and item.matched is False:
+            mismatch = True
 
     history_comps, history_mismatch, history_notes = compare_history(titleblock)
     notes.extend(history_notes)

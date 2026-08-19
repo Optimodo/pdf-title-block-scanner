@@ -61,9 +61,7 @@ def test_suitability_code_and_description_stop_at_designed_by():
         Word(x0=2089, y0=1557, x1=2119, y1=1567, text="Designed"),
         Word(x0=2121, y0=1557, x1=2135, y1=1567, text="by"),
     ]
-    found = extract_near_label_words(
-        words, ["SUITABILITY"], "auto", stop_labels=["DESIGNED BY"]
-    )
+    found = extract_near_label_words(words, ["SUITABILITY"], "auto", stop_labels=["DESIGNED BY"])
     assert found is not None
     from drawing_qa.tokens import extract_suitability
 

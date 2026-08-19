@@ -261,9 +261,7 @@ def extract_near_label_words(
             used_norm = normalize_label(used_label or "")
             if used_norm:
                 value_words = [
-                    word
-                    for word in value_words
-                    if normalize_label(word.text) != used_norm
+                    word for word in value_words if normalize_label(word.text) != used_norm
                 ]
             text = " ".join(w.text for w in value_words).strip()
             if text:
@@ -283,7 +281,9 @@ def extract_near_label(
     return found[0] if found else None
 
 
-def apply_pattern(text: str | None, words: list[Word], pattern: str | None, field_name: str) -> ExtractedField:
+def apply_pattern(
+    text: str | None, words: list[Word], pattern: str | None, field_name: str
+) -> ExtractedField:
     if not text:
         return ExtractedField(name=field_name)
     if field_name == "suitability":

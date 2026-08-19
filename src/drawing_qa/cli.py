@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import sys
 from pathlib import Path
 
-from drawing_qa.checker import check_pdf, check_paths, iter_pdfs
+from drawing_qa.checker import check_paths, check_pdf, iter_pdfs
 from drawing_qa.config_loader import load_config
 from drawing_qa.detect import crop_region_pixmap, region_debug_text
 from drawing_qa.extract import require_pymupdf
@@ -196,10 +197,8 @@ def _should_pause(args: argparse.Namespace) -> bool:
 
 def _pause() -> None:
     print()
-    try:
+    with contextlib.suppress(EOFError):
         input("Press Enter to exit...")
-    except EOFError:
-        pass
 
 
 def main(argv: list[str] | None = None) -> int:

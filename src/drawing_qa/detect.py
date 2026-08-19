@@ -160,15 +160,16 @@ def extract_titleblock(
 
     latest = result.history.latest
     if latest:
-        if not extracted.get("revision") or not extracted["revision"].value:
-            if latest.revision:
-                extracted["revision"] = ExtractedField(
-                    name="revision",
-                    value=latest.revision,
-                    words=latest.words,
-                    source="history",
-                )
-                result.notes.append("Current revision taken from latest history row")
+        if (
+            not extracted.get("revision") or not extracted["revision"].value
+        ) and latest.revision:
+            extracted["revision"] = ExtractedField(
+                name="revision",
+                value=latest.revision,
+                words=latest.words,
+                source="history",
+            )
+            result.notes.append("Current revision taken from latest history row")
         if (not extracted.get("date") or not extracted["date"].value) and latest.date:
             extracted["date"] = ExtractedField(
                 name="date",
@@ -177,7 +178,9 @@ def extract_titleblock(
                 source="history",
             )
             result.notes.append("Current date taken from latest history row")
-        if (not extracted.get("suitability") or not extracted["suitability"].value) and latest.suitability:
+        if (
+            not extracted.get("suitability") or not extracted["suitability"].value
+        ) and latest.suitability:
             extracted["suitability"] = ExtractedField(
                 name="suitability",
                 value=latest.suitability,
@@ -187,7 +190,9 @@ def extract_titleblock(
             result.notes.append("Current suitability taken from latest history row")
 
     result.fields = extracted
-    result.document_reference = (extracted.get("document_reference") or ExtractedField("document_reference")).value
+    result.document_reference = (
+        extracted.get("document_reference") or ExtractedField("document_reference")
+    ).value
     result.title = (extracted.get("title") or ExtractedField("title")).value
     result.revision = (extracted.get("revision") or ExtractedField("revision")).value
     result.suitability = (extracted.get("suitability") or ExtractedField("suitability")).value

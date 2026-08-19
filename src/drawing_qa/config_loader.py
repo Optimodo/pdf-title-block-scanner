@@ -107,9 +107,7 @@ def load_config(config_dir: Path | None = None) -> AppConfig:
 
     return AppConfig(
         field_count=int(filename_cfg.get("field_count", 7)),
-        revision_pattern=str(
-            filename_cfg.get("revision_pattern", r"(?:[PC]\d{2}|[A-Z]\d?)")
-        ),
+        revision_pattern=str(filename_cfg.get("revision_pattern", r"(?:[PC]\d{2}|[A-Z]\d?)")),
         min_layout_score=float(extraction_cfg.get("min_layout_score", 0.7)),
         first_page_only=bool(extraction_cfg.get("first_page_only", True)),
         compare_rules={str(k): str(v) for k, v in rules.items()},

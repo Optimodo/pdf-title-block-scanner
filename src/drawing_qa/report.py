@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from io import BytesIO
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from io import BytesIO
 from pathlib import Path
 
 from openpyxl import Workbook
@@ -174,7 +174,7 @@ def _write_summary(ws: Worksheet, results: list[DocumentResult]) -> None:
     ws["A1"] = "Drawing title-block QA"
     ws["A1"].font = Font(bold=True, size=10, color="1F4E79")
     ws["A2"] = "Generated"
-    ws["B2"] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    ws["B2"] = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
     ws["A3"] = "Documents checked"
     ws["B3"] = len(results)
     ws["A4"] = "Start here"
@@ -245,9 +245,7 @@ def write_report(results: list[DocumentResult], output: Path) -> Path:
     summary.title = "Summary"
     _write_summary(summary, results)
 
-    review = [
-        item for item in results if item.confidence == Confidence.REVIEW
-    ]
+    review = [item for item in results if item.confidence == Confidence.REVIEW]
     high = [item for item in results if item.confidence == Confidence.HIGH]
 
     review_sheet = wb.create_sheet("Review needed")

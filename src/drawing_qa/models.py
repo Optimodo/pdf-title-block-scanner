@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 
 
-class CheckStatus(str, Enum):
+class CheckStatus(StrEnum):
     MATCH = "MATCH"
     MISMATCH = "MISMATCH"
     HISTORY_MISMATCH = "HISTORY_MISMATCH"
@@ -15,7 +15,7 @@ class CheckStatus(str, Enum):
     ERROR = "ERROR"
 
 
-class Confidence(str, Enum):
+class Confidence(StrEnum):
     HIGH = "HIGH"
     REVIEW = "REVIEW"
 

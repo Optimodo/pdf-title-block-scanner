@@ -358,10 +358,7 @@ def setup_logging(verbose: bool = False):
     logging.basicConfig(
         level=level,
         format="%(asctime)s [%(levelname)s] %(message)s",
-        handlers=[
-            logging.StreamHandler(),
-            logging.FileHandler("tbcheck.log")
-        ]
+        handlers=[logging.StreamHandler(), logging.FileHandler("tbcheck.log")],
     )
 ```
 
@@ -382,11 +379,14 @@ Create `src/drawing_qa/exceptions.py`:
 class DrawingQAError(Exception):
     """Base exception for drawing-qa."""
 
+
 class ConfigError(DrawingQAError):
     """Configuration loading error."""
 
+
 class PDFReadError(DrawingQAError):
     """PDF file reading error."""
+
 
 class LayoutDetectionError(DrawingQAError):
     """Title-block layout detection error."""
@@ -430,7 +430,10 @@ Add multiprocessing for large batches:
 ```python
 from concurrent.futures import ProcessPoolExecutor
 
-def check_paths_parallel(paths: list[Path], config: AppConfig, workers: int = 4) -> list[DocumentResult]:
+
+def check_paths_parallel(
+    paths: list[Path], config: AppConfig, workers: int = 4
+) -> list[DocumentResult]:
     with ProcessPoolExecutor(max_workers=workers) as executor:
         futures = [executor.submit(check_pdf, path, config) for path in paths]
         return [f.result() for f in futures]
@@ -509,12 +512,7 @@ Add `--dry-run` flag to preview what would be checked without writing reports.
 Support machine-readable output:
 
 ```python
-check.add_argument(
-    "--format",
-    choices=["excel", "json"],
-    default="excel",
-    help="Output format"
-)
+check.add_argument("--format", choices=["excel", "json"], default="excel", help="Output format")
 ```
 
 ---

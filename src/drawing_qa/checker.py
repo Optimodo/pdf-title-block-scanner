@@ -19,11 +19,7 @@ def iter_pdfs(input_path: Path, *, recursive: bool = False) -> list[Path]:
     if not input_path.is_dir():
         raise FileNotFoundError(input_path)
     iterator = input_path.rglob("*") if recursive else input_path.iterdir()
-    return sorted(
-        p
-        for p in iterator
-        if p.is_file() and p.suffix.lower() == ".pdf"
-    )
+    return sorted(p for p in iterator if p.is_file() and p.suffix.lower() == ".pdf")
 
 
 def check_pdf(path: Path, config: AppConfig) -> DocumentResult:

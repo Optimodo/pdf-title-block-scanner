@@ -31,9 +31,7 @@ def test_extract_suitability_keeps_description_before_or_after_code():
     assert extract_suitability("S2") == "S2"
     assert extract_suitability("CONSTRUCTION A") == "A - CONSTRUCTION"
     assert extract_suitability("A CONSTRUCTION Designed by MG") == "A - CONSTRUCTION"
-    assert extract_suitability("C01 01.06.2026 A - For Construction MT") == (
-        "A - For Construction"
-    )
+    assert extract_suitability("C01 01.06.2026 A - For Construction MT") == ("A - For Construction")
 
 
 def test_history_picks_latest_not_first_row():

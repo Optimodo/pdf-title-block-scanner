@@ -1,6 +1,11 @@
 from drawing_qa.compare import compare_document
-from drawing_qa.models import CheckStatus, FilenameFields, HistoryRow, RevisionHistory, TitleBlockFields
-
+from drawing_qa.models import (
+    CheckStatus,
+    FilenameFields,
+    HistoryRow,
+    RevisionHistory,
+    TitleBlockFields,
+)
 
 DEFAULT_RULES = {
     "document_reference": "required",
