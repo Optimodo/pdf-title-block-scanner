@@ -1,5 +1,8 @@
 # Drawing title-block QA
 
+[![CI](https://github.com/Optimodo/drawing-qa/workflows/CI/badge.svg)](https://github.com/Optimodo/drawing-qa/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 Drop **TBCheck.exe** into a folder of construction drawing PDFs and double-click. It checks every PDF in that folder and writes an Excel report next to the exe.
 
 This follows the same “run where it sits” pattern as [mbs-file-tools](https://github.com/Optimodo/mbs-file-tools).
@@ -105,12 +108,53 @@ Each data row is medium height and includes a **preview strip**: five tight crop
 
 Document reference and revision are **required** when the filename is ISO 19650. Title, suitability, and date are compared when both sides have a value. Older history rows are never compared to the current revision.
 
-## Tests and Linux freeze check
+## Development
+
+### Setup
 
 ```bash
-pytest
-pip install -e ".[build]"
-python scripts/build_exe.py
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev,build]"
+pre-commit install
 ```
 
-On Linux that produces `dist/TBCheck` (not a Windows `.exe`). Build the Windows exe with `build_exe.bat` on Windows.
+### Testing
+
+```bash
+# Run tests
+pytest
+
+# Run tests with coverage
+pytest --cov=drawing_qa --cov-report=term-missing
+
+# Run linting
+ruff check .
+
+# Run type checking
+mypy src/
+```
+
+### Building
+
+```bash
+# Build executable (produces dist/TBCheck or dist/TBCheck.exe)
+python scripts/build_exe.py
+
+# On Windows, use the batch script
+build_exe.bat
+```
+
+On Linux this produces `dist/TBCheck` (not a Windows `.exe`). Build the Windows exe with `build_exe.bat` on Windows.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines.
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for version history.
+
+## License
+
+[MIT License](LICENSE)

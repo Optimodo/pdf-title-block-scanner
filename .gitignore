@@ -11,9 +11,11 @@ build/
 # Test / tool output
 .pytest_cache/
 .coverage
+coverage.xml
 htmlcov/
 .mypy_cache/
 .ruff_cache/
+.tox/
 
 # Reports and debug dumps
 reports/
