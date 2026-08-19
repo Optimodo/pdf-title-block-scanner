@@ -27,8 +27,10 @@ CONF_FILL = {
     Confidence.HIGH: PatternFill("solid", fgColor="C6EFCE"),
     Confidence.REVIEW: PatternFill("solid", fgColor="FFEB9C"),
 }
+BODY_FONT = Font(size=10)
 HEADER_FILL = PatternFill("solid", fgColor="1F4E79")
-HEADER_FONT = Font(color="FFFFFF", bold=True)
+HEADER_FONT = Font(color="FFFFFF", bold=True, size=10)
+HEADER_ALIGN = Alignment(wrap_text=True, vertical="center", horizontal="center")
 WRAP = Alignment(wrap_text=True, vertical="center")
 PREVIEW_W, PREVIEW_H = preview_size()
 ROW_HEIGHT = 62
@@ -37,20 +39,22 @@ PREVIEW_COL_WIDTH = round(PREVIEW_W / 7.0, 1)
 COLUMNS = [
     ("Status", 18),
     ("Confidence", 12),
-    ("File", 34),
-    ("Filename doc ref", 28),
-    ("Title-block doc ref", 28),
-    ("Title", 28),
+    ("File", 35),
+    ("Filename doc ref", 35),
+    ("Title-block doc ref", 35),
+    ("Filename title", 35),
+    ("Title", 35),
     ("Rev (file)", 11),
     ("Rev (drawing)", 13),
-    ("Status / suitability", 18),
+    ("Status / suitability", 25),
     ("Date", 12),
-    ("History latest", 16),
+    ("History latest", 40),
     ("History check", 14),
     ("Preview (detected fields)", PREVIEW_COL_WIDTH),
-    ("Notes", 36),
+    ("Notes", 60),
 ]
-PREVIEW_COL = 13
+PREVIEW_COL = 14
+HISTORY_CHECK_COL = 13
 
 
 def _comp(result: DocumentResult, name: str):
@@ -93,7 +97,8 @@ def _row(result: DocumentResult) -> list[object]:
         result.path.name,
         result.filename.document_reference or "",
         result.titleblock.document_reference or "",
-        result.titleblock.title or result.filename.title or "",
+        result.filename.title or "",
+        result.titleblock.title or "",
         result.filename.revision or "",
         result.titleblock.revision or "",
         result.titleblock.suitability or "",
@@ -110,7 +115,7 @@ def _style_header(ws: Worksheet) -> None:
         cell = ws.cell(1, col)
         cell.fill = HEADER_FILL
         cell.font = HEADER_FONT
-        cell.alignment = Alignment(wrap_text=True, vertical="center")
+        cell.alignment = HEADER_ALIGN
         ws.column_dimensions[get_column_letter(col)].width = width
     ws.row_dimensions[1].height = 28
     ws.freeze_panes = "C2"
@@ -152,9 +157,11 @@ def _write_rows(ws: Worksheet, results: list[DocumentResult], keep: list) -> Non
         elif check == "Matches current":
             history_fill = STATUS_FILL[CheckStatus.MATCH]
         if history_fill:
-            ws.cell(row_idx, 12).fill = history_fill
+            ws.cell(row_idx, HISTORY_CHECK_COL).fill = history_fill
         for col in range(1, len(COLUMNS) + 1):
-            ws.cell(row_idx, col).alignment = WRAP
+            cell = ws.cell(row_idx, col)
+            cell.alignment = WRAP
+            cell.font = BODY_FONT
         if result.preview_png:
             _add_preview(ws, row_idx, result.preview_png, keep)
     last = get_column_letter(len(COLUMNS))
@@ -165,7 +172,7 @@ def _write_summary(ws: Worksheet, results: list[DocumentResult]) -> None:
     counts = Counter(item.status for item in results)
     conf_counts = Counter(item.confidence for item in results)
     ws["A1"] = "Drawing title-block QA"
-    ws["A1"].font = Font(bold=True, size=16, color="1F4E79")
+    ws["A1"].font = Font(bold=True, size=10, color="1F4E79")
     ws["A2"] = "Generated"
     ws["B2"] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     ws["A3"] = "Documents checked"
@@ -174,6 +181,8 @@ def _write_summary(ws: Worksheet, results: list[DocumentResult]) -> None:
     ws["B4"] = "Open the Review needed tab first. High confidence can be sampled more lightly."
     ws["B4"].alignment = Alignment(wrap_text=True)
     ws.merge_cells("B4:F4")
+    for coord in ("A2", "B2", "A3", "B3", "A4", "B4"):
+        ws[coord].font = BODY_FONT
 
     ws["A6"] = "Confidence"
     ws["B6"] = "Count"
@@ -184,9 +193,13 @@ def _write_summary(ws: Worksheet, results: list[DocumentResult]) -> None:
     ws["A7"] = Confidence.REVIEW.value
     ws["B7"] = conf_counts.get(Confidence.REVIEW, 0)
     ws["A7"].fill = CONF_FILL[Confidence.REVIEW]
+    ws["A7"].font = BODY_FONT
+    ws["B7"].font = BODY_FONT
     ws["A8"] = Confidence.HIGH.value
     ws["B8"] = conf_counts.get(Confidence.HIGH, 0)
     ws["A8"].fill = CONF_FILL[Confidence.HIGH]
+    ws["A8"].font = BODY_FONT
+    ws["B8"].font = BODY_FONT
 
     ws["A10"] = "Status"
     ws["B10"] = "Count"
@@ -198,7 +211,7 @@ def _write_summary(ws: Worksheet, results: list[DocumentResult]) -> None:
         CheckStatus.MATCH: "Filename and current title-block values agree; history latest matches current",
         CheckStatus.MISMATCH: "Filename disagrees with the current title-block values",
         CheckStatus.HISTORY_MISMATCH: "Current title block disagrees with the latest revision-history row",
-        CheckStatus.INCOMPLETE: "Layout found, but a required field was missing",
+        CheckStatus.INCOMPLETE: "Layout found, but the document reference could not be read from the title block",
         CheckStatus.UNDETECTED: "No configured layout scored high enough",
         CheckStatus.FILENAME_PARSE_ERROR: "Filename is not ISO 19650; title-block values are still shown",
         CheckStatus.ERROR: "PDF could not be read",
@@ -212,6 +225,8 @@ def _write_summary(ws: Worksheet, results: list[DocumentResult]) -> None:
         if fill:
             ws.cell(row, 1).fill = fill
         ws.cell(row, 3).alignment = Alignment(wrap_text=True)
+        for col in range(1, 4):
+            ws.cell(row, col).font = BODY_FONT
         row += 1
 
     ws.column_dimensions["A"].width = 24

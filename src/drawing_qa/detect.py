@@ -7,6 +7,7 @@ from drawing_qa.extract import (
     apply_pattern,
     extract_near_label_words,
     extract_words,
+    find_label,
     page_rect,
     words_outside,
 )
@@ -18,6 +19,7 @@ from drawing_qa.models import (
     TitleBlockFields,
     TitleBlockLayout,
     Word,
+    bbox_of,
 )
 
 
@@ -90,17 +92,32 @@ def extract_field(
         text = all_text(clip_words).replace("\n", " ")
         return apply_pattern(text, clip_words, spec.pattern, name)
     if spec.labels:
-        found = extract_near_label_words(
-            words,
-            spec.labels,
-            spec.direction,
-            stop_labels=_all_labels(layout),
-            exclude=exclude,
-        )
-        if not found:
-            return ExtractedField(name=name)
-        text, value_words = found
-        return apply_pattern(text, value_words, spec.pattern, name)
+        remaining_exclude = exclude
+        for _ in range(5):
+            found = extract_near_label_words(
+                words,
+                spec.labels,
+                spec.direction,
+                stop_labels=_all_labels(layout),
+                exclude=remaining_exclude,
+            )
+            if not found:
+                return ExtractedField(name=name)
+            text, value_words = found
+            extracted = apply_pattern(text, value_words, spec.pattern, name)
+            if extracted.value:
+                return extracted
+            # Skip this label occurrence (not the whole below-window) and try the next.
+            label_hit = None
+            for label in spec.labels:
+                label_hit = find_label(words, label, exclude=remaining_exclude)
+                if label_hit:
+                    break
+            box = bbox_of(label_hit) if label_hit else bbox_of(value_words)
+            if box is None:
+                return ExtractedField(name=name)
+            remaining_exclude = box if remaining_exclude is None else remaining_exclude.union(box)
+        return ExtractedField(name=name)
     return ExtractedField(name=name)
 
 

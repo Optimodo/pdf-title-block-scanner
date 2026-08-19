@@ -19,8 +19,16 @@ DATE_IN_TEXT = re.compile(
     re.IGNORECASE,
 )
 SUITABILITY_IN_TEXT = re.compile(
-    r"\b(S[0-7]|A[1-3]|B[1-2])\b(?:\s*[-–:]\s*[A-Za-z][A-Za-z0-9 &/]+)?",
+    r"\b(S[0-7]|A[1-3]|B[1-2])\b",
     re.IGNORECASE,
+)
+# Cut neighbouring title-block roles out of a suitability capture.
+_SUITABILITY_TAIL = re.compile(
+    r"\b(?:DESIGNED|DRAWN|CHECKED|APPROVED|AUTHORI[SZ]ED|VERIFIED)\b",
+    re.IGNORECASE,
+)
+_TRAILING_INITIALS = re.compile(
+    r"(?:\s+[A-Z](?:\.[A-Z])+\.?|\s+[A-Z]{2,3}\.?)$",
 )
 MONTHS = {
     "JAN": 1,
@@ -62,17 +70,35 @@ def revision_rank(value: str | None) -> tuple:
 
 
 def extract_suitability(text: str | None) -> str | None:
+    """Return 'S2 - Suitable for Tender' or 'A - Construction' from code + description."""
     if not text:
         return None
-    match = SUITABILITY_IN_TEXT.search(text)
-    if not match:
+    cleaned = DATE_IN_TEXT.sub(" ", text)
+    cleaned = re.sub(r"\b[PC]\d{1,2}\b", " ", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\b[A-Z]\.[A-Z]\.?\b", " ", cleaned)
+    tail = _SUITABILITY_TAIL.search(cleaned)
+    if tail:
+        cleaned = cleaned[: tail.start()]
+    cleaned = re.sub(r"[\s\-–:/]+", " ", cleaned).strip(" -–:")
+    if not cleaned:
         return None
-    code = match.group(1).upper()
-    rest = text[match.end() :].strip(" -–:")
-    if rest:
-        return f"{code} {rest}".strip()
-    full = match.group(0).strip()
-    return re.sub(r"\s+", " ", full).upper() if full.upper().startswith(code) else code
+    match = SUITABILITY_IN_TEXT.search(cleaned)
+    if match:
+        code = match.group(1).upper()
+        remainder = f"{cleaned[: match.start()]} {cleaned[match.end() :]}"
+    else:
+        tokens = re.findall(r"[A-Za-z0-9&]+", cleaned)
+        letters = [tok for tok in tokens if len(tok) == 1 and tok.isalpha()]
+        words = [tok for tok in tokens if len(tok) > 1]
+        if len(letters) != 1 or not words:
+            return None
+        code = letters[0].upper()
+        remainder = " ".join(tok for tok in tokens if tok.upper() != code)
+    remainder = re.sub(r"[\s\-–:/]+", " ", remainder).strip(" -–:")
+    remainder = _TRAILING_INITIALS.sub("", remainder).strip(" -–:")
+    if remainder:
+        return f"{code} - {remainder}"
+    return code
 
 
 def _year(raw: str) -> int:
@@ -133,4 +159,7 @@ def suitability_code(value: str | None) -> str | None:
     if not value:
         return None
     match = SUITABILITY_IN_TEXT.search(value)
+    if match:
+        return match.group(1).upper()
+    match = re.match(r"^([A-Z])(?:\s|$|-)", value.strip())
     return match.group(1).upper() if match else None

@@ -19,6 +19,21 @@ def test_parse_uk_and_iso_dates():
 def test_suitability_code():
     assert suitability_code("S4 - Construction") == "S4"
     assert suitability_code("S3 Review and Comment") == "S3"
+    assert suitability_code("A - CONSTRUCTION") == "A"
+
+
+def test_extract_suitability_keeps_description_before_or_after_code():
+    from drawing_qa.tokens import extract_suitability
+
+    assert extract_suitability("Suitable For Tender S2") == "S2 - Suitable For Tender"
+    assert extract_suitability("S3 - Review & Comment") == "S3 - Review & Comment"
+    assert extract_suitability("REVIEW & COMMENT S3") == "S3 - REVIEW & COMMENT"
+    assert extract_suitability("S2") == "S2"
+    assert extract_suitability("CONSTRUCTION A") == "A - CONSTRUCTION"
+    assert extract_suitability("A CONSTRUCTION Designed by MG") == "A - CONSTRUCTION"
+    assert extract_suitability("C01 01.06.2026 A - For Construction MT") == (
+        "A - For Construction"
+    )
 
 
 def test_history_picks_latest_not_first_row():
@@ -40,6 +55,23 @@ def test_history_picks_latest_not_first_row():
     assert history.latest.revision == "P03"
     assert history.latest.date == "15.06.24"
     assert len(history.rows) == 3
+
+
+def test_amendments_heading_allows_single_history_row():
+    words = [
+        _w(10, 30, "P01", 30),
+        _w(50, 30, "14.08.26", 50),
+        _w(120, 30, "S3", 20),
+        _w(150, 30, "Review", 40),
+        _w(10, 55, "Rev", 20),
+        _w(50, 55, "Date", 20),
+        _w(80, 80, "Amendments", 60),
+    ]
+    history = detect_revision_history(words)
+    assert history.latest is not None
+    assert history.latest.revision == "P01"
+    assert history.latest.date == "14.08.26"
+    assert history.latest.suitability and history.latest.suitability.startswith("S3")
 
 
 def test_history_picks_latest_when_newest_is_on_top():

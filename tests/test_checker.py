@@ -4,7 +4,12 @@ from drawing_qa.checker import check_pdf, check_paths, iter_pdfs
 from drawing_qa.config_loader import load_config
 from drawing_qa.models import CheckStatus, Confidence
 from drawing_qa.report import write_report
-from tests.pdf_fixtures import write_bottom_right_pdf, write_bottom_strip_pdf, write_plain_pdf
+from tests.pdf_fixtures import (
+    write_bottom_right_pdf,
+    write_bottom_strip_pdf,
+    write_mbs_right_pdf,
+    write_plain_pdf,
+)
 
 
 def test_detects_bottom_right_and_matches(tmp_path: Path, config_dir: Path):
@@ -20,6 +25,20 @@ def test_detects_bottom_right_and_matches(tmp_path: Path, config_dir: Path):
     assert result.titleblock.revision == "P01"
     assert result.titleblock.title == "Ground Floor GA"
     assert result.status == CheckStatus.MATCH
+
+
+def test_filename_without_revision_or_title_can_still_match(tmp_path: Path, config_dir: Path):
+    pdf = write_bottom_right_pdf(
+        tmp_path / "ABC-WXY-ZZ-00-DR-A-0001.pdf",
+        document_reference="ABC-WXY-ZZ-00-DR-A-0001",
+        title="Ground Floor GA",
+        revision="P01",
+    )
+    result = check_pdf(pdf, load_config(config_dir))
+    assert result.filename.revision is None
+    assert result.filename.title is None
+    assert result.status == CheckStatus.MATCH
+    assert result.confidence == Confidence.HIGH
 
 
 def test_detects_bottom_strip_layout(tmp_path: Path, config_dir: Path):
@@ -94,6 +113,21 @@ def test_excel_report_created(tmp_path: Path, config_dir: Path):
     assert wb["High confidence"].max_row == 2
     assert wb["Review needed"].max_row == 2
     assert wb["All documents"]._images
+    data = wb["All documents"]
+    assert data["F1"].value == "Filename title"
+    assert data["J1"].value == "Status / suitability"
+    assert data.column_dimensions["C"].width == 35
+    assert data.column_dimensions["D"].width == 35
+    assert data.column_dimensions["E"].width == 35
+    assert data.column_dimensions["F"].width == 35
+    assert data.column_dimensions["G"].width == 35
+    assert data.column_dimensions["J"].width == 25
+    assert data.column_dimensions["L"].width == 40
+    assert data.column_dimensions["O"].width == 60
+    assert data["A1"].font.size == 10
+    assert data["C2"].font.size == 10
+    assert data["A1"].alignment.horizontal == "center"
+    assert data["O1"].alignment.horizontal == "center"
 
 
 def test_history_latest_used_not_older_rows(tmp_path: Path, config_dir: Path):
@@ -139,6 +173,79 @@ def test_history_mismatch_against_current_rev(tmp_path: Path, config_dir: Path):
     assert result.titleblock.history.latest.revision == "P02"
     assert result.status == CheckStatus.HISTORY_MISMATCH
     assert result.confidence == Confidence.REVIEW
+
+
+def test_detects_mbs_right_title_block(tmp_path: Path, config_dir: Path):
+    pdf = write_mbs_right_pdf(
+        tmp_path / "R459-MBS-DZ-BA-DR-W-55100-P01.pdf",
+        document_reference="R459-MBS-DZ-BA-DR-W-55100",
+        title="Block D Commercial Sprinkler layout Level LG\nSheet 1 of 4",
+        revision="P01",
+        suitability="S3",
+        date="14.08.26",
+    )
+    result = check_pdf(pdf, load_config(config_dir))
+    assert result.titleblock.layout_id == "mbs_right"
+    assert result.titleblock.document_reference == "R459-MBS-DZ-BA-DR-W-55100"
+    assert result.titleblock.revision == "P01"
+    assert result.titleblock.title == "Block D Commercial Sprinkler layout Level LG Sheet 1 of 4"
+    assert result.titleblock.suitability == "S3 - REVIEW & COMMENT"
+    assert result.titleblock.date == "14.08.26"
+    assert result.titleblock.history.latest is not None
+    assert result.titleblock.history.latest.revision == "P01"
+    assert result.status == CheckStatus.MATCH
+
+
+def test_real_mbs_drawing_if_present(config_dir: Path):
+    sample = Path("test files") / "R459-MBS-DZ-BA-DR-W-55100.pdf"
+    if not sample.is_file():
+        return
+    result = check_pdf(sample, load_config(config_dir))
+    assert result.titleblock.layout_id == "mbs_right"
+    assert result.titleblock.document_reference == "R459-MBS-DZ-BA-DR-W-55100"
+    assert result.titleblock.revision == "P01"
+    assert result.titleblock.date == "14.08.26"
+    assert result.titleblock.suitability and result.titleblock.suitability.startswith("S3")
+    assert result.titleblock.title and "Sprinkler" in result.titleblock.title
+    assert result.titleblock.history.latest is not None
+    assert result.titleblock.history.latest.revision == "P01"
+    assert result.status == CheckStatus.MATCH
+    assert result.confidence == Confidence.HIGH
+
+
+def test_real_multiline_title_and_suitability_if_present(config_dir: Path):
+    sample = Path("test files") / "J106309-MEP-02-ZZ-DR-X-600026.pdf"
+    if not sample.is_file():
+        return
+    result = check_pdf(sample, load_config(config_dir))
+    assert result.titleblock.title == "Electrical Layout - Apartment Type Z2 - L"
+    assert result.titleblock.suitability == "S2 - Suitable For Tender"
+
+
+def test_real_wcr_construction_status_and_date_if_present(config_dir: Path):
+    sample = Path("test files") / (
+        "WCR-MBS-B7-XX-DR-M-5301 - B7 - Mechanical Services Layout"
+        " - Below Level 00 - Sheet 01 of 03_C01.pdf"
+    )
+    if not sample.is_file():
+        return
+    result = check_pdf(sample, load_config(config_dir))
+    assert result.filename.title and result.filename.title.startswith("B7")
+    assert result.titleblock.suitability == "A - CONSTRUCTION"
+    assert result.titleblock.date == "01.06.2026"
+    assert result.titleblock.history.latest is not None
+    assert result.titleblock.history.latest.revision == "C01"
+    assert "Current date taken from latest history row" not in result.notes
+
+
+def test_real_hpa_history_rows_if_present(config_dir: Path):
+    sample = Path("test files") / "HPA-MBS-D3-LG-DR-X-55103-C02.pdf"
+    if not sample.is_file():
+        return
+    result = check_pdf(sample, load_config(config_dir))
+    assert result.titleblock.history.latest is not None
+    assert result.titleblock.history.latest.revision == "C02"
+    assert len(result.titleblock.history.rows) >= 4
 
 
 def test_iter_pdfs_is_not_recursive(tmp_path: Path):

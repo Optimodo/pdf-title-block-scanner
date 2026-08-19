@@ -10,7 +10,7 @@ extraction:
 compare:
   fields:
     document_reference: required
-    revision: required
+    revision: if_both_present
     title: if_both_present
     suitability: if_both_present
     date: if_both_present

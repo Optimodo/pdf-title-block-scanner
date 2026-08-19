@@ -21,7 +21,7 @@ fields:
   document_reference:
     labels: [DRAWING NO, DRAWING NUMBER, DRG NO, DOCUMENT NO]
     direction: auto
-    pattern: "[A-Z0-9]+(?:-[A-Z0-9]+){6}"
+    pattern: "[A-Z0-9]+(?:-[A-Z0-9]+){5}-[0-9]+(?:-[0-9]+)?"
   title:
     labels: [DRAWING TITLE, TITLE]
     direction: auto

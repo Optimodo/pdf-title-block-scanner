@@ -1,0 +1,51 @@
+id: mbs_right
+name: MBS right-hand title block
+min_score: 0.75
+region:
+  left: 0.78
+  top: 0.48
+  right: 1.0
+  bottom: 1.0
+history:
+  expand_left: 0.0
+  expand_top: 0.12
+  min_rows: 2
+anchors:
+  - NUMBER
+  - TITLE
+  - REVISION
+  - SUITABILITY
+  - AMENDMENTS
+  - PROJECT
+  - CLIENT
+  - DESCRIPTION
+  - BY
+  - DESIGNED BY
+  - DRAWN BY
+  - CHECKED BY
+  - SCALES
+  - PROJECT NO
+  - PROJECT NUMBER
+required_anchor_groups:
+  - [NUMBER]
+  - [REVISION, REV]
+  - [SUITABILITY]
+  - [TITLE]
+fields:
+  document_reference:
+    labels: [NUMBER, DRAWING NO, DRAWING NUMBER, DOCUMENT NUMBER]
+    direction: below
+    pattern: "[A-Z0-9]+(?:-[A-Z0-9]+){5}-[0-9]+(?:-[0-9]+)?"
+  title:
+    labels: [TITLE, DRAWING TITLE]
+    direction: below
+  revision:
+    labels: [REVISION, REV]
+    direction: auto
+    pattern: "(?:[PC]\\d{2}|[A-Z]\\d?)"
+  suitability:
+    labels: [SUITABILITY, STATUS, PURPOSE OF ISSUE]
+    direction: auto
+  date:
+    labels: [DATE, ISSUE DATE]
+    direction: auto

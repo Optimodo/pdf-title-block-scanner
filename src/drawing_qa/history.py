@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from drawing_qa.extract import all_text, line_text, normalize_label, words_to_lines
+from drawing_qa.extract import all_text, find_label, line_text, normalize_label, words_to_lines
 from drawing_qa.models import (
     HistoryRow,
     HistorySpec,
@@ -23,6 +23,7 @@ HISTORY_HEADINGS = (
     "REV HISTORY",
     "ISSUE HISTORY",
     "AMENDMENT HISTORY",
+    "AMENDMENTS",
 )
 
 
@@ -49,9 +50,23 @@ def history_search_region(layout: TitleBlockLayout) -> RectFrac:
     )
 
 
-def _has_history_heading(words: list[Word]) -> bool:
-    blob = f" {normalize_label(all_text(words))} "
-    return any(f" {heading} " in blob for heading in HISTORY_HEADINGS)
+def _clip_words_to_history_table(
+    words: list[Word],
+) -> tuple[list[Word], list[Word] | None]:
+    """Keep the amendments/revision table around its heading, if present."""
+    heading_words = None
+    for heading in HISTORY_HEADINGS:
+        found = find_label(words, heading)
+        if found:
+            heading_words = found
+            break
+    if not heading_words:
+        return words, None
+    # Rows may sit above the caption (MBS) or just below it.
+    top = min(word.y0 for word in heading_words) - 280
+    bottom = max(word.y1 for word in heading_words) + 28
+    clipped = [word for word in words if top <= word.cy <= bottom]
+    return clipped or words, heading_words
 
 
 def _line_revision(line: list[Word]) -> Word | None:
@@ -121,7 +136,11 @@ def _cluster_rows(rows: list[HistoryRow], x_tolerance: float = 24.0) -> list[lis
 def detect_revision_history(words: list[Word], spec: HistorySpec | None = None) -> RevisionHistory:
     spec = spec or HistorySpec()
     result = RevisionHistory()
-    heading = _has_history_heading(words)
+    words, heading_words = _clip_words_to_history_table(words)
+    heading = bool(heading_words)
+    if not heading:
+        blob = f" {normalize_label(all_text(words))} "
+        heading = any(f" {item} " in blob for item in HISTORY_HEADINGS)
     parsed: list[HistoryRow] = []
     for line in words_to_lines(words):
         row = _parse_row(line)
@@ -158,6 +177,10 @@ def detect_revision_history(words: list[Word], spec: HistorySpec | None = None) 
     result.rows = cluster
     result.latest = latest
     result.bbox = bbox
+    if heading_words:
+        heading_box = bbox_of(heading_words)
+        if heading_box:
+            result.bbox = bbox.union(heading_box)
     result.notes.append(
         f"Revision history: {len(cluster)} row(s); latest {latest.revision or '?'}"
     )

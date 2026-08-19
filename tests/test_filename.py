@@ -45,13 +45,46 @@ def test_rejects_non_iso_name():
     parsed = parse_filename("A-101 Rev C.pdf")
     assert not parsed.parse_ok
     assert parsed.document_reference is None
-    assert parsed.revision == "C"
-    assert parsed.title == "A-101 Rev"
+    assert parsed.revision is None
+    assert parsed.title is None
 
 
-def test_loose_title_and_revision_without_iso_core():
+def test_trailing_revision_without_iso_core():
     parsed = parse_filename("Ground Floor GA_P01.pdf")
     assert not parsed.parse_ok
     assert parsed.document_reference is None
     assert parsed.revision == "P01"
+    assert parsed.title is None
+
+
+def test_compound_document_number_and_export_date_suffix():
+    parsed = parse_filename("ABC-WXY-ZZ-00-DR-A-675-001-260717-WMS.pdf")
+    assert parsed.parse_ok
+    assert parsed.document_reference == "ABC-WXY-ZZ-00-DR-A-675-001"
+    assert parsed.parts["number"] == "675-001"
+    assert parsed.revision is None
+
+
+def test_title_then_trailing_revision():
+    parsed = parse_filename("ABC-WXY-ZZ-00-DR-A-0001 - Ground Floor GA - P01.pdf")
+    assert parsed.parse_ok
+    assert parsed.document_reference == "ABC-WXY-ZZ-00-DR-A-0001"
     assert parsed.title == "Ground Floor GA"
+    assert parsed.revision == "P01"
+
+
+def test_building_code_in_title_is_not_treated_as_revision():
+    parsed = parse_filename(
+        "WCR-MBS-B7-XX-DR-M-5301 - B7 - Mechanical Services Layout_C01.pdf"
+    )
+    assert parsed.parse_ok
+    assert parsed.document_reference == "WCR-MBS-B7-XX-DR-M-5301"
+    assert parsed.title == "B7 - Mechanical Services Layout"
+    assert parsed.revision == "C01"
+
+
+def test_windows_copy_suffix_stripped():
+    parsed = parse_filename("ABC-WXY-ZZ-00-DR-A-0001-P01 - Copy.pdf")
+    assert parsed.parse_ok
+    assert parsed.document_reference == "ABC-WXY-ZZ-00-DR-A-0001"
+    assert parsed.revision == "P01"

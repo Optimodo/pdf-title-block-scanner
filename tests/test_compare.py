@@ -4,7 +4,7 @@ from drawing_qa.models import CheckStatus, FilenameFields, HistoryRow, RevisionH
 
 DEFAULT_RULES = {
     "document_reference": "required",
-    "revision": "required",
+    "revision": "if_both_present",
     "title": "if_both_present",
     "suitability": "if_both_present",
     "date": "if_both_present",
@@ -16,6 +16,24 @@ def test_match_when_required_fields_agree():
         raw_stem="x",
         document_reference="ABC-WXY-ZZ-00-DR-A-0001",
         revision="P01",
+        title=None,
+        parse_ok=True,
+    )
+    titleblock = TitleBlockFields(
+        layout_id="bottom_right",
+        document_reference="ABC-WXY-ZZ-00-DR-A-0001",
+        revision="P01",
+        title="Ground Floor GA",
+    )
+    _comps, _hist, status, _notes = compare_document(filename, titleblock, DEFAULT_RULES)
+    assert status == CheckStatus.MATCH
+
+
+def test_missing_filename_revision_and_title_are_not_incomplete():
+    filename = FilenameFields(
+        raw_stem="x",
+        document_reference="ABC-WXY-ZZ-00-DR-A-0001",
+        revision=None,
         title=None,
         parse_ok=True,
     )

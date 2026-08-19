@@ -87,6 +87,69 @@ def write_bottom_strip_pdf(
     return path
 
 
+def write_mbs_right_pdf(
+    path: Path,
+    *,
+    document_reference: str,
+    title: str,
+    revision: str,
+    suitability: str = "S3",
+    date: str = "14.08.26",
+    history: list[tuple[str, str, str]] | None = None,
+) -> Path:
+    """Landscape sheet with an MBS-style right-hand title block (visual coords)."""
+    doc = pymupdf.open()
+    page = doc.new_page(width=2384, height=1684)
+    page.insert_text((40, 40), "SPRINKLER LAYOUT", fontsize=18)
+    # Amendments table (newest row above the column headers)
+    rows = history or [(revision, date, f"{suitability} - Review & Comment")]
+    y = 1058
+    for rev, when, desc in rows:
+        page.insert_text((1916, y), rev, fontsize=9)
+        page.insert_text((1945, y), when, fontsize=9)
+        page.insert_text((1990, y), desc, fontsize=9)
+        y += 16
+    page.insert_text((1915, 1088), "Rev", fontsize=8)
+    page.insert_text((1952, 1088), "Date", fontsize=8)
+    page.insert_text((2102, 1088), "Description", fontsize=8)
+    page.insert_text((2288, 1088), "By", fontsize=8)
+    page.insert_text((2077, 1118), "Amendments", fontsize=9)
+    page.insert_text((1918, 1140), "Project", fontsize=8)
+    page.insert_text((2011, 1170), "Oval Village Block D", fontsize=12)
+    page.insert_text((1918, 1196), "Title", fontsize=8)
+    title_y = 1240
+    for line in title.split("\n"):
+        page.insert_text((1923, title_y), line, fontsize=12)
+        title_y += 28
+    page.insert_text((1918, 1296), "Client", fontsize=8)
+    page.insert_text((2085, 1320), "Berkeley", fontsize=10)
+    page.insert_text((1914, 1446), "Suitability", fontsize=8)
+    page.insert_text((2041, 1468), "REVIEW & COMMENT", fontsize=11)
+    page.insert_text((2271, 1468), suitability, fontsize=12)
+    page.insert_text((2051, 1528), "Date", fontsize=8)
+    page.insert_text((2126, 1534), date, fontsize=10)
+    page.insert_text((1918, 1592), "Number", fontsize=8)
+    page.insert_text((1946, 1640), document_reference, fontsize=14)
+    page.insert_text((2247, 1592), "Revision", fontsize=8)
+    page.insert_text((2246, 1640), revision, fontsize=18)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    doc.save(path)
+    doc.close()
+    return path
+
+
+def write_rotated_number_pdf(path: Path) -> Path:
+    """Portrait page rotated 270° with a label in unrotated space (bottom-left)."""
+    doc = pymupdf.open()
+    page = doc.new_page(width=200, height=400)
+    page.insert_text((20, 380), "Number", fontsize=11)
+    page.set_rotation(270)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    doc.save(path)
+    doc.close()
+    return path
+
+
 def write_plain_pdf(path: Path, text: str = "No title block here") -> Path:
     doc, page = _page()
     page.insert_text((80, 200), text, fontsize=14)
