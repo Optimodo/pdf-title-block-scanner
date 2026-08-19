@@ -6,6 +6,10 @@ region:
   top: 0.70
   right: 1.0
   bottom: 1.0
+history:
+  expand_left: 0.28
+  expand_top: 0.05
+  min_rows: 2
 anchors:
   - DRAWING NO
   - DRAWING TITLE
@@ -25,3 +29,9 @@ fields:
     labels: [REV, REVISION]
     direction: auto
     pattern: "(?:[PC]\\d{2}|[A-Z]\\d?)"
+  suitability:
+    labels: [STATUS, SUITABILITY, PURPOSE OF ISSUE, PURPOSE, ISSUE STATUS]
+    direction: auto
+  date:
+    labels: [DATE, ISSUE DATE, ISSUED]
+    direction: auto

@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import re
 
-from drawing_qa.models import RectFrac, Word
+from drawing_qa.models import BBox, ExtractedField, Word, bbox_of
+from drawing_qa.tokens import DATE_IN_TEXT, extract_suitability, is_revision_token
 
 try:
     import pymupdf
@@ -15,7 +16,7 @@ def require_pymupdf() -> None:
         raise RuntimeError("PyMuPDF is required. Install with: pip install pymupdf")
 
 
-def page_rect(page, region: RectFrac):
+def page_rect(page, region):
     require_pymupdf()
     width = float(page.rect.width)
     height = float(page.rect.height)
@@ -27,7 +28,7 @@ def page_rect(page, region: RectFrac):
     )
 
 
-def extract_words(page, region: RectFrac | None = None) -> list[Word]:
+def extract_words(page, region=None) -> list[Word]:
     require_pymupdf()
     clip = page_rect(page, region) if region else page.rect
     raw = page.get_text("words", clip=clip) or []
@@ -77,23 +78,38 @@ def all_text(words: list[Word]) -> str:
     return "\n".join(line_text(line) for line in words_to_lines(words)).strip()
 
 
-def _normalize_label(text: str) -> str:
+def normalize_label(text: str) -> str:
     return re.sub(r"[^A-Z0-9]+", " ", text.upper()).strip()
 
 
-def find_label(words: list[Word], label: str) -> list[Word] | None:
+def words_outside(words: list[Word], bbox: BBox | None, pad: float = 2.0) -> list[Word]:
+    if bbox is None:
+        return list(words)
+    box = bbox.inflate(pad)
+    return [word for word in words if not box.contains_point(word.cx, word.cy)]
+
+
+def find_label(
+    words: list[Word],
+    label: str,
+    exclude: BBox | None = None,
+) -> list[Word] | None:
     """Return the consecutive words that form a label, if present."""
-    target = _normalize_label(label).split()
+    target = normalize_label(label).split()
     if not target:
         return None
     lines = words_to_lines(words)
     for line in lines:
-        normalized = [_normalize_label(w.text) for w in line]
+        normalized = [normalize_label(w.text) for w in line]
         n = len(normalized)
         t = len(target)
         for i in range(n - t + 1):
-            if normalized[i : i + t] == target:
-                return line[i : i + t]
+            if normalized[i : i + t] != target:
+                continue
+            found = line[i : i + t]
+            if exclude and all(exclude.contains_point(w.cx, w.cy) for w in found):
+                continue
+            return found
     return None
 
 
@@ -124,7 +140,6 @@ def _below(words: list[Word], label_words: list[Word]) -> list[Word]:
     x1 = max(w.x1 for w in label_words)
     y1 = max(w.y1 for w in label_words)
     width = max(x1 - x0, 1.0)
-    # Expand search band so values sitting slightly left/right of the heading still count.
     band_left = x0 - width * 0.25
     band_right = x1 + width * 2.5
     chosen: list[Word] = []
@@ -135,23 +150,20 @@ def _below(words: list[Word], label_words: list[Word]) -> list[Word]:
             continue
         if word.x1 < band_left or word.x0 > band_right:
             continue
-        # Keep close vertically so we don't swallow the rest of the title block.
         if word.y0 > y1 + height_of(label_words) * 6:
             continue
         chosen.append(word)
     if not chosen:
         return []
-    lines = words_to_lines(chosen)
-    return lines[0]
+    return words_to_lines(chosen)[0]
 
 
 def _label_token_length(words: list[Word], labels: list[str]) -> int:
-    """If `words` starts with one of the labels, return that label's token count."""
     if not words or not labels:
         return 0
-    normalized = [_normalize_label(w.text) for w in words]
+    normalized = [normalize_label(w.text) for w in words]
     for label in labels:
-        target = _normalize_label(label).split()
+        target = normalize_label(label).split()
         if target and normalized[: len(target)] == target:
             return len(target)
     return 0
@@ -170,16 +182,18 @@ def take_until_label(words: list[Word], stop_labels: list[str]) -> list[Word]:
     return kept
 
 
-def extract_near_label(
+def extract_near_label_words(
     words: list[Word],
     labels: list[str],
     direction: str = "auto",
     stop_labels: list[str] | None = None,
-) -> str | None:
+    exclude: BBox | None = None,
+) -> tuple[str, list[Word]] | None:
+    search_words = words_outside(words, exclude)
     label_words = None
     used_label = None
     for label in labels:
-        found = find_label(words, label)
+        found = find_label(search_words, label, exclude=exclude)
         if found:
             label_words = found
             used_label = label
@@ -187,17 +201,54 @@ def extract_near_label(
     if not label_words:
         return None
 
-    stops = [item for item in (stop_labels or []) if _normalize_label(item) != _normalize_label(used_label or "")]
+    stops = [
+        item
+        for item in (stop_labels or [])
+        if normalize_label(item) != normalize_label(used_label or "")
+    ]
     directions = [direction] if direction != "auto" else ["right", "below"]
     for d in directions:
         if d == "right":
-            value_words = _same_line_right(words, label_words)
+            value_words = _same_line_right(search_words, label_words)
         elif d == "below":
-            value_words = _below(words, label_words)
+            value_words = _below(search_words, label_words)
         else:
             raise ValueError(f"Unknown direction {d} for label {used_label}")
         value_words = take_until_label(value_words, stops)
         text = " ".join(w.text for w in value_words).strip()
         if text:
-            return text
+            return text, value_words
     return None
+
+
+def extract_near_label(
+    words: list[Word],
+    labels: list[str],
+    direction: str = "auto",
+    stop_labels: list[str] | None = None,
+    exclude: BBox | None = None,
+) -> str | None:
+    found = extract_near_label_words(words, labels, direction, stop_labels, exclude)
+    return found[0] if found else None
+
+
+def apply_pattern(text: str | None, words: list[Word], pattern: str | None, field_name: str) -> ExtractedField:
+    if not text:
+        return ExtractedField(name=field_name)
+    if field_name == "suitability":
+        value = extract_suitability(text) or (text.strip() or None)
+        return ExtractedField(name=field_name, value=value, words=words)
+    if field_name == "date":
+        match = DATE_IN_TEXT.search(text)
+        value = match.group(0) if match else text.strip()
+        kept = [w for w in words if DATE_IN_TEXT.search(w.text) or w.text in (value or "")]
+        return ExtractedField(name=field_name, value=value, words=kept or words)
+    if field_name == "revision":
+        token = next((w for w in words if is_revision_token(w.text)), None)
+        if token:
+            return ExtractedField(name=field_name, value=token.text.upper(), words=[token])
+    if not pattern:
+        return ExtractedField(name=field_name, value=text.strip() or None, words=words)
+    match = re.search(pattern, text, flags=re.IGNORECASE)
+    value = match.group(0).strip() if match else text.strip()
+    return ExtractedField(name=field_name, value=value or None, words=words)

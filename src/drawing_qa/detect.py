@@ -2,8 +2,23 @@ from __future__ import annotations
 
 import re
 
-from drawing_qa.extract import all_text, extract_near_label, extract_words, page_rect
-from drawing_qa.models import FieldSpec, RectFrac, TitleBlockFields, TitleBlockLayout, Word
+from drawing_qa.extract import (
+    all_text,
+    apply_pattern,
+    extract_near_label_words,
+    extract_words,
+    page_rect,
+    words_outside,
+)
+from drawing_qa.history import detect_revision_history, history_search_region
+from drawing_qa.models import (
+    ExtractedField,
+    FieldSpec,
+    RectFrac,
+    TitleBlockFields,
+    TitleBlockLayout,
+    Word,
+)
 
 
 def _normalize_for_search(text: str) -> str:
@@ -49,39 +64,44 @@ def _clip_to_page(region: RectFrac, clip: RectFrac, relative_to: str) -> RectFra
     )
 
 
-def _apply_pattern(value: str | None, pattern: str | None) -> str | None:
-    if value is None:
-        return None
-    if not pattern:
-        return value.strip() or None
-    match = re.search(pattern, value, flags=re.IGNORECASE)
-    return match.group(0).strip() if match else value.strip() or None
-
-
 def _all_labels(layout: TitleBlockLayout) -> list[str]:
     labels: list[str] = []
     for spec in layout.fields.values():
         labels.extend(spec.labels)
     labels.extend(layout.anchors)
-    # Preserve order while dropping duplicates.
     return list(dict.fromkeys(labels))
 
 
-def extract_field(page, layout: TitleBlockLayout, spec: FieldSpec) -> str | None:
+def extract_field(
+    page,
+    layout: TitleBlockLayout,
+    spec: FieldSpec,
+    name: str,
+    exclude=None,
+) -> ExtractedField:
     words = extract_words(page, layout.region)
+    if exclude is not None:
+        words = words_outside(words, exclude)
     if spec.clip is not None:
         field_region = _clip_to_page(layout.region, spec.clip, spec.relative_to)
         clip_words = extract_words(page, field_region)
-        return _apply_pattern(all_text(clip_words).replace("\n", " "), spec.pattern)
+        if exclude is not None:
+            clip_words = words_outside(clip_words, exclude)
+        text = all_text(clip_words).replace("\n", " ")
+        return apply_pattern(text, clip_words, spec.pattern, name)
     if spec.labels:
-        value = extract_near_label(
+        found = extract_near_label_words(
             words,
             spec.labels,
             spec.direction,
             stop_labels=_all_labels(layout),
+            exclude=exclude,
         )
-        return _apply_pattern(value, spec.pattern)
-    return None
+        if not found:
+            return ExtractedField(name=name)
+        text, value_words = found
+        return apply_pattern(text, value_words, spec.pattern, name)
+    return ExtractedField(name=name)
 
 
 def extract_titleblock(
@@ -112,20 +132,55 @@ def extract_titleblock(
         )
         return result
 
-    fields = {}
-    for name, spec in layout.fields.items():
-        fields[name] = extract_field(page, layout, spec)
+    history_words = extract_words(page, history_search_region(layout))
+    result.history = detect_revision_history(history_words, layout.history)
+    result.notes.extend(result.history.notes)
+    exclude = result.history.bbox
 
-    result.document_reference = fields.get("document_reference")
-    result.title = fields.get("title")
-    result.revision = fields.get("revision")
-    missing = [
-        name
-        for name in ("document_reference", "revision")
-        if not fields.get(name)
-    ]
+    extracted: dict[str, ExtractedField] = {}
+    for name, spec in layout.fields.items():
+        extracted[name] = extract_field(page, layout, spec, name, exclude=exclude)
+
+    latest = result.history.latest
+    if latest:
+        if not extracted.get("revision") or not extracted["revision"].value:
+            if latest.revision:
+                extracted["revision"] = ExtractedField(
+                    name="revision",
+                    value=latest.revision,
+                    words=latest.words,
+                    source="history",
+                )
+                result.notes.append("Current revision taken from latest history row")
+        if (not extracted.get("date") or not extracted["date"].value) and latest.date:
+            extracted["date"] = ExtractedField(
+                name="date",
+                value=latest.date,
+                words=latest.words,
+                source="history",
+            )
+            result.notes.append("Current date taken from latest history row")
+        if (not extracted.get("suitability") or not extracted["suitability"].value) and latest.suitability:
+            extracted["suitability"] = ExtractedField(
+                name="suitability",
+                value=latest.suitability,
+                words=latest.words,
+                source="history",
+            )
+            result.notes.append("Current suitability taken from latest history row")
+
+    result.fields = extracted
+    result.document_reference = (extracted.get("document_reference") or ExtractedField("document_reference")).value
+    result.title = (extracted.get("title") or ExtractedField("title")).value
+    result.revision = (extracted.get("revision") or ExtractedField("revision")).value
+    result.suitability = (extracted.get("suitability") or ExtractedField("suitability")).value
+    result.date = (extracted.get("date") or ExtractedField("date")).value
+    missing = [name for name in ("document_reference", "revision") if not getattr(result, name)]
     if missing:
         result.notes.append("Missing title-block fields: " + ", ".join(missing))
+    empty_optional = [name for name in ("suitability", "date") if not getattr(result, name)]
+    if empty_optional:
+        result.notes.append("Optional fields not found: " + ", ".join(empty_optional))
     return result
 
 
@@ -133,9 +188,7 @@ def region_debug_text(page, region: RectFrac) -> str:
     words = extract_words(page, region)
     lines = []
     for word in words:
-        lines.append(
-            f"{word.x0:7.1f},{word.y0:7.1f}  {word.text}"
-        )
+        lines.append(f"{word.x0:7.1f},{word.y0:7.1f}  {word.text}")
     return "\n".join(lines)
 
 

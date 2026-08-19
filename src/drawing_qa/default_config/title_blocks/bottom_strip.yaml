@@ -6,6 +6,9 @@ region:
   top: 0.82
   right: 1.0
   bottom: 1.0
+history:
+  expand_top: 0.18
+  min_rows: 2
 anchors:
   - DOCUMENT NUMBER
   - TITLE
@@ -25,3 +28,9 @@ fields:
     labels: [REVISION, REV]
     direction: auto
     pattern: "(?:[PC]\\d{2}|[A-Z]\\d?)"
+  suitability:
+    labels: [STATUS, SUITABILITY, PURPOSE OF ISSUE, PURPOSE]
+    direction: auto
+  date:
+    labels: [DATE, ISSUE DATE, ISSUED]
+    direction: auto

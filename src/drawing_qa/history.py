@@ -1,0 +1,167 @@
+from __future__ import annotations
+
+from drawing_qa.extract import all_text, line_text, normalize_label, words_to_lines
+from drawing_qa.models import (
+    HistoryRow,
+    HistorySpec,
+    RectFrac,
+    RevisionHistory,
+    TitleBlockLayout,
+    Word,
+    bbox_of,
+)
+from drawing_qa.tokens import (
+    DATE_IN_TEXT,
+    extract_suitability,
+    is_revision_token,
+    revision_rank,
+    suitability_code,
+)
+
+HISTORY_HEADINGS = (
+    "REVISION HISTORY",
+    "REV HISTORY",
+    "ISSUE HISTORY",
+    "AMENDMENT HISTORY",
+)
+
+
+def history_search_region(layout: TitleBlockLayout) -> RectFrac:
+    spec = layout.history or HistorySpec()
+    if spec.region is not None:
+        if spec.relative_to == "page":
+            return spec.region.clamp()
+        region = layout.region
+        width = region.right - region.left
+        height = region.bottom - region.top
+        return RectFrac(
+            left=region.left + spec.region.left * width,
+            top=region.top + spec.region.top * height,
+            right=region.left + spec.region.right * width,
+            bottom=region.top + spec.region.bottom * height,
+        ).clamp()
+    region = layout.region
+    return RectFrac(
+        left=max(0.0, region.left - spec.expand_left),
+        top=max(0.0, region.top - spec.expand_top),
+        right=min(1.0, region.right + spec.expand_right),
+        bottom=min(1.0, region.bottom + spec.expand_bottom),
+    )
+
+
+def _has_history_heading(words: list[Word]) -> bool:
+    blob = f" {normalize_label(all_text(words))} "
+    return any(f" {heading} " in blob for heading in HISTORY_HEADINGS)
+
+
+def _line_revision(line: list[Word]) -> Word | None:
+    for word in line:
+        if is_revision_token(word.text):
+            return word
+    return None
+
+
+def _line_date(line: list[Word]) -> str | None:
+    text = line_text(line)
+    match = DATE_IN_TEXT.search(text)
+    return match.group(0) if match else None
+
+
+def _parse_row(line: list[Word]) -> HistoryRow | None:
+    rev_word = _line_revision(line)
+    date_value = _line_date(line)
+    if rev_word is None or not date_value:
+        return None
+    suit = extract_suitability(line_text(line))
+    skip = {id(rev_word)}
+    description_words = []
+    for word in line:
+        if id(word) in skip:
+            continue
+        if DATE_IN_TEXT.search(word.text):
+            continue
+        if suitability_code(word.text) and len(word.text) <= 3:
+            continue
+        if normalize_label(word.text) in {"REV", "REVISION", "DATE", "STATUS", "SUITABILITY"}:
+            continue
+        description_words.append(word)
+    description = " ".join(w.text for w in description_words).strip() or None
+    if suit and description:
+        code = suitability_code(suit)
+        if code and description.upper().startswith(code):
+            description = description[len(code) :].strip(" -–:") or None
+    return HistoryRow(
+        revision=rev_word.text.upper(),
+        date=date_value,
+        suitability=suit,
+        description=description,
+        words=list(line),
+    )
+
+
+def _cluster_rows(rows: list[HistoryRow], x_tolerance: float = 24.0) -> list[list[HistoryRow]]:
+    clusters: list[list[HistoryRow]] = []
+    for row in rows:
+        rev_word = _line_revision(row.words)
+        if rev_word is None:
+            continue
+        placed = False
+        for cluster in clusters:
+            sample = _line_revision(cluster[0].words)
+            if sample and abs(rev_word.x0 - sample.x0) <= x_tolerance:
+                cluster.append(row)
+                placed = True
+                break
+        if not placed:
+            clusters.append([row])
+    clusters.sort(key=len, reverse=True)
+    return clusters
+
+
+def detect_revision_history(words: list[Word], spec: HistorySpec | None = None) -> RevisionHistory:
+    spec = spec or HistorySpec()
+    result = RevisionHistory()
+    heading = _has_history_heading(words)
+    parsed: list[HistoryRow] = []
+    for line in words_to_lines(words):
+        row = _parse_row(line)
+        if row:
+            parsed.append(row)
+    if not parsed:
+        return result
+
+    clusters = _cluster_rows(parsed)
+    cluster = clusters[0] if clusters else []
+    min_rows = 1 if heading else spec.min_rows
+    if len(cluster) < min_rows:
+        result.notes.append("No revision-history table detected")
+        return result
+
+    cluster.sort(key=lambda row: min(w.y0 for w in row.words))
+    latest = max(cluster, key=lambda row: revision_rank(row.revision))
+    boxes = [row.bbox for row in cluster if row.bbox]
+    bbox = boxes[0]
+    for extra in boxes[1:]:
+        bbox = bbox.union(extra)
+    # Include a header line just above the first data row when present.
+    first_top = min(row.bbox.y0 for row in cluster if row.bbox)
+    header_words = [
+        word
+        for word in words
+        if first_top - 18 <= word.cy < first_top - 1
+    ]
+    if header_words:
+        header_box = bbox_of(header_words)
+        if header_box:
+            bbox = bbox.union(header_box)
+
+    result.rows = cluster
+    result.latest = latest
+    result.bbox = bbox
+    result.notes.append(
+        f"Revision history: {len(cluster)} row(s); latest {latest.revision or '?'}"
+    )
+    older = [row.revision for row in cluster if row.revision != latest.revision]
+    if older:
+        result.notes.append("Older history revisions ignored: " + ", ".join(dict.fromkeys(older)))
+    return result

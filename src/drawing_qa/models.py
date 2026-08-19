@@ -8,10 +8,25 @@ from pathlib import Path
 class CheckStatus(str, Enum):
     MATCH = "MATCH"
     MISMATCH = "MISMATCH"
+    HISTORY_MISMATCH = "HISTORY_MISMATCH"
     INCOMPLETE = "INCOMPLETE"
     UNDETECTED = "UNDETECTED"
     FILENAME_PARSE_ERROR = "FILENAME_PARSE_ERROR"
     ERROR = "ERROR"
+
+
+class Confidence(str, Enum):
+    HIGH = "HIGH"
+    REVIEW = "REVIEW"
+
+
+MAIN_FIELDS = (
+    "document_reference",
+    "title",
+    "revision",
+    "suitability",
+    "date",
+)
 
 
 @dataclass(frozen=True)
@@ -33,6 +48,38 @@ class RectFrac:
 
 
 @dataclass(frozen=True)
+class BBox:
+    """Axis-aligned rectangle in PDF page coordinates (origin top-left)."""
+
+    x0: float
+    y0: float
+    x1: float
+    y1: float
+
+    @property
+    def width(self) -> float:
+        return max(self.x1 - self.x0, 1.0)
+
+    @property
+    def height(self) -> float:
+        return max(self.y1 - self.y0, 1.0)
+
+    def inflate(self, pad: float) -> BBox:
+        return BBox(self.x0 - pad, self.y0 - pad, self.x1 + pad, self.y1 + pad)
+
+    def union(self, other: BBox) -> BBox:
+        return BBox(
+            min(self.x0, other.x0),
+            min(self.y0, other.y0),
+            max(self.x1, other.x1),
+            max(self.y1, other.y1),
+        )
+
+    def contains_point(self, x: float, y: float) -> bool:
+        return self.x0 <= x <= self.x1 and self.y0 <= y <= self.y1
+
+
+@dataclass(frozen=True)
 class Word:
     x0: float
     y0: float
@@ -49,6 +96,17 @@ class Word:
         return (self.y0 + self.y1) / 2
 
 
+def bbox_of(words: list[Word]) -> BBox | None:
+    if not words:
+        return None
+    return BBox(
+        min(w.x0 for w in words),
+        min(w.y0 for w in words),
+        max(w.x1 for w in words),
+        max(w.y1 for w in words),
+    )
+
+
 @dataclass
 class FieldSpec:
     labels: list[str] = field(default_factory=list)
@@ -56,6 +114,17 @@ class FieldSpec:
     pattern: str | None = None
     clip: RectFrac | None = None
     relative_to: str = "region"
+
+
+@dataclass
+class HistorySpec:
+    expand_left: float = 0.25
+    expand_right: float = 0.0
+    expand_top: float = 0.05
+    expand_bottom: float = 0.0
+    region: RectFrac | None = None
+    relative_to: str = "page"
+    min_rows: int = 2
 
 
 @dataclass
@@ -67,6 +136,7 @@ class TitleBlockLayout:
     required_anchor_groups: list[list[str]]
     fields: dict[str, FieldSpec]
     min_score: float = 0.7
+    history: HistorySpec = field(default_factory=HistorySpec)
 
 
 @dataclass
@@ -75,8 +145,43 @@ class FilenameFields:
     document_reference: str | None = None
     title: str | None = None
     revision: str | None = None
+    suitability: str | None = None
+    date: str | None = None
     parts: dict[str, str] = field(default_factory=dict)
     parse_ok: bool = False
+    notes: list[str] = field(default_factory=list)
+
+
+@dataclass
+class ExtractedField:
+    name: str
+    value: str | None = None
+    words: list[Word] = field(default_factory=list)
+    source: str = "titleblock"
+
+    @property
+    def bbox(self) -> BBox | None:
+        return bbox_of(self.words)
+
+
+@dataclass
+class HistoryRow:
+    revision: str | None = None
+    date: str | None = None
+    suitability: str | None = None
+    description: str | None = None
+    words: list[Word] = field(default_factory=list)
+
+    @property
+    def bbox(self) -> BBox | None:
+        return bbox_of(self.words)
+
+
+@dataclass
+class RevisionHistory:
+    rows: list[HistoryRow] = field(default_factory=list)
+    latest: HistoryRow | None = None
+    bbox: BBox | None = None
     notes: list[str] = field(default_factory=list)
 
 
@@ -88,6 +193,10 @@ class TitleBlockFields:
     document_reference: str | None = None
     title: str | None = None
     revision: str | None = None
+    suitability: str | None = None
+    date: str | None = None
+    fields: dict[str, ExtractedField] = field(default_factory=dict)
+    history: RevisionHistory = field(default_factory=RevisionHistory)
     notes: list[str] = field(default_factory=list)
 
 
@@ -106,7 +215,10 @@ class DocumentResult:
     filename: FilenameFields
     titleblock: TitleBlockFields
     comparisons: list[FieldComparison] = field(default_factory=list)
+    history_comparisons: list[FieldComparison] = field(default_factory=list)
     status: CheckStatus = CheckStatus.ERROR
+    confidence: Confidence = Confidence.REVIEW
     notes: list[str] = field(default_factory=list)
     page_count: int = 0
     error: str | None = None
+    preview_png: bytes | None = None

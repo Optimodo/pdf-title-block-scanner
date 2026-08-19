@@ -6,7 +6,7 @@ from pathlib import Path
 
 import yaml
 
-from drawing_qa.models import FieldSpec, RectFrac, TitleBlockLayout
+from drawing_qa.models import FieldSpec, HistorySpec, RectFrac, TitleBlockLayout
 from drawing_qa.paths import resolve_config_dir
 
 
@@ -44,6 +44,20 @@ def _field_spec(data: dict | None) -> FieldSpec:
     )
 
 
+def _history_spec(data: dict | None) -> HistorySpec:
+    data = data or {}
+    region = _rect(data["region"]) if data.get("region") else None
+    return HistorySpec(
+        expand_left=float(data.get("expand_left", 0.25)),
+        expand_right=float(data.get("expand_right", 0.0)),
+        expand_top=float(data.get("expand_top", 0.05)),
+        expand_bottom=float(data.get("expand_bottom", 0.0)),
+        region=region,
+        relative_to=str(data.get("relative_to", "page")),
+        min_rows=int(data.get("min_rows", 2)),
+    )
+
+
 def load_layout(path: Path) -> TitleBlockLayout:
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     fields_raw = data.get("fields") or {}
@@ -59,6 +73,7 @@ def load_layout(path: Path) -> TitleBlockLayout:
         required_anchor_groups=groups,
         fields=fields,
         min_score=float(data.get("min_score", 0.7)),
+        history=_history_spec(data.get("history")),
     )
 
 
@@ -76,6 +91,8 @@ def load_config(config_dir: Path | None = None) -> AppConfig:
         "document_reference": "required",
         "revision": "required",
         "title": "if_both_present",
+        "suitability": "if_both_present",
+        "date": "if_both_present",
     }
 
     layouts_dir = config_dir / "title_blocks"

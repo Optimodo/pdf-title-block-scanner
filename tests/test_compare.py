@@ -1,5 +1,14 @@
 from drawing_qa.compare import compare_document
-from drawing_qa.models import CheckStatus, FilenameFields, TitleBlockFields
+from drawing_qa.models import CheckStatus, FilenameFields, HistoryRow, RevisionHistory, TitleBlockFields
+
+
+DEFAULT_RULES = {
+    "document_reference": "required",
+    "revision": "required",
+    "title": "if_both_present",
+    "suitability": "if_both_present",
+    "date": "if_both_present",
+}
 
 
 def test_match_when_required_fields_agree():
@@ -16,15 +25,7 @@ def test_match_when_required_fields_agree():
         revision="P01",
         title="Ground Floor GA",
     )
-    _comparisons, status, _notes = compare_document(
-        filename,
-        titleblock,
-        {
-            "document_reference": "required",
-            "revision": "required",
-            "title": "if_both_present",
-        },
-    )
+    _comps, _hist, status, _notes = compare_document(filename, titleblock, DEFAULT_RULES)
     assert status == CheckStatus.MATCH
 
 
@@ -40,11 +41,7 @@ def test_mismatch_on_revision():
         document_reference="ABC-WXY-ZZ-00-DR-A-0001",
         revision="P02",
     )
-    _comparisons, status, _notes = compare_document(
-        filename,
-        titleblock,
-        {"document_reference": "required", "revision": "required", "title": "if_both_present"},
-    )
+    _comps, _hist, status, _notes = compare_document(filename, titleblock, DEFAULT_RULES)
     assert status == CheckStatus.MISMATCH
 
 
@@ -62,11 +59,7 @@ def test_title_compared_only_when_both_present():
         revision="P01",
         title="First Floor GA",
     )
-    _comparisons, status, _notes = compare_document(
-        filename,
-        titleblock,
-        {"document_reference": "required", "revision": "required", "title": "if_both_present"},
-    )
+    _comps, _hist, status, _notes = compare_document(filename, titleblock, DEFAULT_RULES)
     assert status == CheckStatus.MISMATCH
 
 
@@ -84,13 +77,33 @@ def test_non_iso_filename_still_extracts_titleblock():
         revision="P01",
         title="Ground Floor GA",
     )
-    comparisons, status, _notes = compare_document(
-        filename,
-        titleblock,
-        {"document_reference": "required", "revision": "required", "title": "if_both_present"},
-    )
+    comparisons, _hist, status, _notes = compare_document(filename, titleblock, DEFAULT_RULES)
     assert status == CheckStatus.FILENAME_PARSE_ERROR
     doc = next(item for item in comparisons if item.name == "document_reference")
     assert doc.titleblock_value == "ABC-WXY-ZZ-00-DR-A-0001"
     assert doc.filename_value is None
     assert doc.matched is None
+
+
+def test_history_mismatch_when_latest_rev_differs():
+    filename = FilenameFields(
+        raw_stem="x",
+        document_reference="ABC-WXY-ZZ-00-DR-A-0001",
+        revision="P03",
+        parse_ok=True,
+    )
+    titleblock = TitleBlockFields(
+        layout_id="bottom_right",
+        document_reference="ABC-WXY-ZZ-00-DR-A-0001",
+        revision="P03",
+        date="15.06.24",
+        history=RevisionHistory(
+            rows=[],
+            latest=HistoryRow(revision="P02", date="03.03.24"),
+        ),
+    )
+    _comps, hist, status, notes = compare_document(filename, titleblock, DEFAULT_RULES)
+    assert status == CheckStatus.HISTORY_MISMATCH
+    rev = next(item for item in hist if item.name == "history_revision")
+    assert rev.matched is False
+    assert any("P02" in note for note in notes)

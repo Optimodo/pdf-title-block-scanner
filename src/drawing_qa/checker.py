@@ -8,6 +8,7 @@ from drawing_qa.detect import extract_titleblock
 from drawing_qa.extract import require_pymupdf
 from drawing_qa.filename import parse_filename
 from drawing_qa.models import CheckStatus, DocumentResult, TitleBlockFields
+from drawing_qa.preview import render_preview
 
 
 def iter_pdfs(input_path: Path, *, recursive: bool = False) -> list[Path]:
@@ -52,6 +53,7 @@ def check_pdf(path: Path, config: AppConfig) -> DocumentResult:
                 config.layouts,
                 config.min_layout_score,
             )
+            result.preview_png = render_preview(page, result.titleblock)
     except Exception as exc:  # noqa: BLE001 - surface any PDF read failure in the report
         result.status = CheckStatus.ERROR
         result.error = str(exc)

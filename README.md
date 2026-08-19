@@ -8,8 +8,9 @@ For each PDF it:
 
 1. Parses an **ISO 19650** document reference (and optional title / revision) from the filename when present.
 2. Detects which configured **title-block layout** the sheet uses.
-3. Reads document reference, title, and revision from the title block (vector text).
-4. Writes **TBCheckReport.xlsx** (or `TBCheckReport-1.xlsx`, `-2.xlsx`, … if a report already exists).
+3. Reads five current attributes from the title block (not the revision-history table): document reference, title, revision, purpose of issue / suitability, and date.
+4. Parses the **revision history** table separately, takes only the **latest** row, and checks it against the current title-block revision / date / status.
+5. Writes **TBCheckReport.xlsx** with a summary, a Review needed tab, a High confidence tab, and tight screenshots of the five detected fields.
 
 Non-ISO filenames are still processed: title-block values are extracted and shown in the report even when the filename cannot supply a document reference.
 
@@ -83,23 +84,26 @@ Typical workflow for a new style:
 
 ## Report
 
-The workbook has four sheets:
+The workbook has four sheets. Start on **Review needed**.
 
-- **Summary** — counts by status
+- **Summary** — confidence counts, status counts, and what each status means
+- **Review needed** — mismatches, history disagreements, incomplete reads, undetected layouts, parse errors
+- **High confidence** — filename, current title block, and latest history row all agree
 - **All documents** — every PDF
-- **Needs attention** — mismatches, incomplete reads, undetected layouts, parse errors
-- **Matches** — filename and title block agree
+
+Each data row is medium height and includes a **preview strip**: five tight crops (doc ref, title, revision, suitability, date) — not the whole title block.
 
 | Status | Meaning |
 | --- | --- |
-| `MATCH` | Required fields agree |
-| `MISMATCH` | Filename and title block disagree |
+| `MATCH` | Filename agrees with the current title block; latest history row matches current |
+| `MISMATCH` | Filename disagrees with the current title-block values |
+| `HISTORY_MISMATCH` | Current title block disagrees with the latest revision-history row |
 | `INCOMPLETE` | Layout found, but a required field was missing |
 | `UNDETECTED` | No configured layout scored high enough |
 | `FILENAME_PARSE_ERROR` | Filename is not ISO 19650; title-block values are still reported for manual review |
 | `ERROR` | PDF could not be read |
 
-Document reference and revision are **required** by default. Title is compared only when it appears in **both** the filename and the title block.
+Document reference and revision are **required** when the filename is ISO 19650. Title, suitability, and date are compared when both sides have a value. Older history rows are never compared to the current revision.
 
 ## Tests and Linux freeze check
 
