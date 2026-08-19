@@ -63,6 +63,11 @@ def test_filename_parse_error(tmp_path: Path, config_dir: Path):
     )
     result = check_pdf(pdf, load_config(config_dir))
     assert result.status == CheckStatus.FILENAME_PARSE_ERROR
+    assert result.titleblock.layout_id == "bottom_right"
+    assert result.titleblock.document_reference == "ABC-WXY-ZZ-00-DR-A-0001"
+    assert result.titleblock.revision == "P01"
+    assert result.titleblock.title == "Plan"
+    assert result.filename.document_reference is None
 
 
 def test_excel_report_created(tmp_path: Path, config_dir: Path):

@@ -45,3 +45,13 @@ def test_rejects_non_iso_name():
     parsed = parse_filename("A-101 Rev C.pdf")
     assert not parsed.parse_ok
     assert parsed.document_reference is None
+    assert parsed.revision == "C"
+    assert parsed.title == "A-101 Rev"
+
+
+def test_loose_title_and_revision_without_iso_core():
+    parsed = parse_filename("Ground Floor GA_P01.pdf")
+    assert not parsed.parse_ok
+    assert parsed.document_reference is None
+    assert parsed.revision == "P01"
+    assert parsed.title == "Ground Floor GA"

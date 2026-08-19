@@ -44,6 +44,14 @@ def _compare_title(filename_value: str | None, titleblock_value: str | None) -> 
     return left == right, "equal" if left == right else f"{left} != {right}"
 
 
+def _layout_undetected(titleblock: TitleBlockFields) -> bool:
+    if not titleblock.layout_id:
+        return True
+    if titleblock.document_reference is None and titleblock.revision is None:
+        return any("below threshold" in note for note in titleblock.notes)
+    return False
+
+
 def compare_document(
     filename: FilenameFields,
     titleblock: TitleBlockFields,
@@ -82,27 +90,23 @@ def compare_document(
             continue
         if rule == "required":
             if item.matched is None:
-                incomplete = True
-                notes.append(f"{field_name}: {item.detail}")
+                if filename.parse_ok or item.filename_value is not None:
+                    incomplete = True
+                    notes.append(f"{field_name}: {item.detail}")
             elif item.matched is False:
                 mismatch = True
                 required_fail = True
         elif rule == "if_both_present":
             if item.matched is False:
                 mismatch = True
-            # None means skip — not a failure
         elif rule == "optional":
             if item.matched is False:
                 mismatch = True
 
-    if not filename.parse_ok:
-        return comparisons, CheckStatus.FILENAME_PARSE_ERROR, filename.notes
-    if titleblock.layout_id and titleblock.notes and titleblock.document_reference is None and titleblock.revision is None:
-        # undetected layout (score too low) typically has a threshold note and empty fields
-        if any("below threshold" in note for note in titleblock.notes):
-            return comparisons, CheckStatus.UNDETECTED, titleblock.notes
-    if not titleblock.layout_id:
+    if _layout_undetected(titleblock):
         return comparisons, CheckStatus.UNDETECTED, titleblock.notes
+    if not filename.parse_ok:
+        return comparisons, CheckStatus.FILENAME_PARSE_ERROR, notes + filename.notes + titleblock.notes
     if incomplete and not required_fail:
         return comparisons, CheckStatus.INCOMPLETE, notes + titleblock.notes
     if mismatch:

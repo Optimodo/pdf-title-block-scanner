@@ -6,10 +6,12 @@ This follows the same “run where it sits” pattern as [mbs-file-tools](https:
 
 For each PDF it:
 
-1. Parses an **ISO 19650** document reference (and optional title / revision) from the filename.
+1. Parses an **ISO 19650** document reference (and optional title / revision) from the filename when present.
 2. Detects which configured **title-block layout** the sheet uses.
 3. Reads document reference, title, and revision from the title block (vector text).
 4. Writes **TBCheckReport.xlsx** (or `TBCheckReport-1.xlsx`, `-2.xlsx`, … if a report already exists).
+
+Non-ISO filenames are still processed: title-block values are extracted and shown in the report even when the filename cannot supply a document reference.
 
 OCR for scanned PDFs is out of scope for this version. Sheets need a selectable CAD text layer.
 
@@ -94,7 +96,7 @@ The workbook has four sheets:
 | `MISMATCH` | Filename and title block disagree |
 | `INCOMPLETE` | Layout found, but a required field was missing |
 | `UNDETECTED` | No configured layout scored high enough |
-| `FILENAME_PARSE_ERROR` | Filename is not ISO 19650 |
+| `FILENAME_PARSE_ERROR` | Filename is not ISO 19650; title-block values are still reported for manual review |
 | `ERROR` | PDF could not be read |
 
 Document reference and revision are **required** by default. Title is compared only when it appears in **both** the filename and the title block.
