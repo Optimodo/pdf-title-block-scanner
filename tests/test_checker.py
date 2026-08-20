@@ -123,7 +123,9 @@ def test_excel_report_created(tmp_path: Path, config_dir: Path):
     assert data.column_dimensions["G"].width == 35
     assert data.column_dimensions["J"].width == 25
     assert data.column_dimensions["L"].width == 40
-    assert data.column_dimensions["O"].width == 60
+    # Column O is now "Suggested filename" (40), Notes moved to Q (60)
+    assert data.column_dimensions["O"].width == 40
+    assert data.column_dimensions["Q"].width == 60
     assert data["A1"].font.size == 10
     assert data["C2"].font.size == 10
     assert data["A1"].alignment.horizontal == "center"

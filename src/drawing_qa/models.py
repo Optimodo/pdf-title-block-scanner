@@ -12,6 +12,8 @@ class CheckStatus(StrEnum):
     INCOMPLETE = "INCOMPLETE"
     UNDETECTED = "UNDETECTED"
     SPELLING_ERROR = "SPELLING_ERROR"
+    DUPLICATE_REFERENCE = "DUPLICATE_REFERENCE"
+    DATE_REGRESSION = "DATE_REGRESSION"
     FILENAME_PARSE_ERROR = "FILENAME_PARSE_ERROR"
     ERROR = "ERROR"
 
@@ -224,3 +226,6 @@ class DocumentResult:
     error: str | None = None
     preview_png: bytes | None = None
     spelling_errors: list[str] = field(default_factory=list)
+    suggested_filename: str | None = None
+    paired_dwg: Path | None = None
+    dwg_mismatch: bool = False

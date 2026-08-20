@@ -5,10 +5,12 @@ from pathlib import Path
 from drawing_qa.compare import build_result
 from drawing_qa.config_loader import AppConfig
 from drawing_qa.detect import extract_titleblock
+from drawing_qa.dwg_pairing import check_dwg_pairing
 from drawing_qa.extract import require_pymupdf
 from drawing_qa.filename import parse_filename
 from drawing_qa.models import CheckStatus, DocumentResult, TitleBlockFields
 from drawing_qa.preview import render_preview
+from drawing_qa.validation import check_date_regression, check_duplicates, suggest_filename
 
 
 def iter_pdfs(input_path: Path, *, recursive: bool = False) -> list[Path]:
@@ -62,5 +64,28 @@ def check_pdf(path: Path, config: AppConfig) -> DocumentResult:
     return build_result(result, config.compare_rules, config.spell_check)
 
 
-def check_paths(paths: list[Path], config: AppConfig) -> list[DocumentResult]:
-    return [check_pdf(path, config) for path in paths]
+def check_paths(
+    paths: list[Path],
+    config: AppConfig,
+    suggest_title: bool = False,
+    suggest_revision: bool = False,
+) -> list[DocumentResult]:
+    results = [check_pdf(path, config) for path in paths]
+    
+    # Apply cross-document validations
+    if results:
+        folder = results[0].path.parent
+        results = check_duplicates(results)
+        results = check_date_regression(results)
+        results = check_dwg_pairing(results, folder)
+        
+        # Generate filename suggestions for mismatches
+        for result in results:
+            if result.status in (CheckStatus.MISMATCH, CheckStatus.SPELLING_ERROR):
+                result.suggested_filename = suggest_filename(
+                    result,
+                    include_title=suggest_title,
+                    include_revision=suggest_revision,
+                )
+    
+    return results

@@ -21,6 +21,8 @@ STATUS_FILL = {
     CheckStatus.INCOMPLETE: PatternFill("solid", fgColor="FFEB9C"),
     CheckStatus.UNDETECTED: PatternFill("solid", fgColor="DDEBF7"),
     CheckStatus.SPELLING_ERROR: PatternFill("solid", fgColor="E4DFEC"),
+    CheckStatus.DUPLICATE_REFERENCE: PatternFill("solid", fgColor="FFB6C1"),
+    CheckStatus.DATE_REGRESSION: PatternFill("solid", fgColor="FFA07A"),
     CheckStatus.FILENAME_PARSE_ERROR: PatternFill("solid", fgColor="F4B183"),
     CheckStatus.ERROR: PatternFill("solid", fgColor="D9D9D9"),
 }
@@ -52,6 +54,8 @@ COLUMNS = [
     ("History latest", 40),
     ("History check", 14),
     ("Preview (detected fields)", PREVIEW_COL_WIDTH),
+    ("Suggested filename", 40),
+    ("DWG pairing", 35),
     ("Notes", 60),
 ]
 PREVIEW_COL = 14
@@ -70,6 +74,15 @@ def _hcomp(result: DocumentResult, name: str):
         if item.name == name:
             return item
     return None
+
+
+def _dwg_pairing_text(result: DocumentResult) -> str:
+    """Generate text for DWG pairing column."""
+    if not result.paired_dwg:
+        return ""
+    if result.dwg_mismatch:
+        return f"{result.paired_dwg.name} (mismatch)"
+    return result.paired_dwg.name
 
 
 def _history_check(result: DocumentResult) -> str:
@@ -106,7 +119,9 @@ def _row(result: DocumentResult) -> list[object]:
         result.titleblock.date or "",
         _latest_history_label(result),
         _history_check(result),
-        "",
+        "",  # Preview column (filled separately)
+        result.suggested_filename or "",
+        _dwg_pairing_text(result),
         "; ".join(result.notes + ([result.error] if result.error else [])),
     ]
 
@@ -215,6 +230,8 @@ def _write_summary(ws: Worksheet, results: list[DocumentResult]) -> None:
         CheckStatus.INCOMPLETE: "Layout found, but the document reference could not be read from the title block",
         CheckStatus.UNDETECTED: "No configured layout scored high enough",
         CheckStatus.SPELLING_ERROR: "Possible spelling error detected in title",
+        CheckStatus.DUPLICATE_REFERENCE: "Multiple PDFs have the same document reference",
+        CheckStatus.DATE_REGRESSION: "Revision dates go backwards (later rev has earlier date)",
         CheckStatus.FILENAME_PARSE_ERROR: "Filename is not ISO 19650; title-block values are still shown",
         CheckStatus.ERROR: "PDF could not be read",
     }

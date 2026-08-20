@@ -36,6 +36,21 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Wait for Enter before exiting (default for the standalone exe).",
     )
+    parser.add_argument(
+        "--auto-rename",
+        action="store_true",
+        help="Automatically rename mismatched files without prompting.",
+    )
+    parser.add_argument(
+        "--include-title",
+        action="store_true",
+        help="Include title in suggested/renamed filenames.",
+    )
+    parser.add_argument(
+        "--include-revision",
+        action="store_true",
+        help="Include revision in suggested/renamed filenames.",
+    )
     sub = parser.add_subparsers(dest="command")
 
     check = sub.add_parser("check", help="Scan PDFs and write an Excel QA report")
@@ -87,6 +102,121 @@ def _print_summary(results) -> None:
         print(f"  {status}: {count}")
 
 
+def _print_mismatch_summary(results) -> list:
+    """Print summary of mismatches and return list of renameable items."""
+    from drawing_qa.models import CheckStatus
+    
+    mismatches = [
+        r for r in results
+        if r.status == CheckStatus.MISMATCH and r.suggested_filename
+    ]
+    
+    if not mismatches:
+        return []
+    
+    print()
+    print("=" * 80)
+    print(f"Found {len(mismatches)} file(s) with document reference mismatches:")
+    print("=" * 80)
+    print()
+    
+    for i, result in enumerate(mismatches, 1):
+        print(f"{i}. {result.path.name}")
+        print(f"   Filename doc ref: {result.filename.document_reference or '(none)'}")
+        print(f"   Title block doc ref: {result.titleblock.document_reference}")
+        if result.suggested_filename:
+            print(f"   Suggested: {result.suggested_filename}")
+        if result.paired_dwg:
+            status = " (naming mismatch)" if result.dwg_mismatch else ""
+            print(f"   Paired DWG: {result.paired_dwg.name}{status}")
+        print()
+    
+    return mismatches
+
+
+def _offer_rename(mismatches: list) -> bool:
+    """Offer to rename mismatched files interactively.
+    
+    Returns True if user wants to rename, False otherwise.
+    """
+    if not mismatches:
+        return False
+    
+    print("=" * 80)
+    print("Would you like to rename these files to match their title blocks?")
+    print("This will rename PDFs (and paired DWG files) to the suggested names.")
+    print("=" * 80)
+    
+    while True:
+        response = input("Rename files? (yes/no/preview): ").strip().lower()
+        if response in ("y", "yes"):
+            return True
+        if response in ("n", "no"):
+            return False
+        if response in ("p", "preview"):
+            _preview_renames(mismatches)
+            continue
+        print("Please answer 'yes', 'no', or 'preview'")
+
+
+def _preview_renames(mismatches: list) -> None:
+    """Show what would be renamed without actually renaming."""
+    print()
+    print("Preview of changes:")
+    print("-" * 80)
+    for result in mismatches:
+        print(f"PDF: {result.path.name} → {result.suggested_filename}")
+        if result.paired_dwg and result.suggested_filename:
+            # Suggest DWG name based on PDF suggestion
+            dwg_suggestion = Path(result.suggested_filename).stem + ".dwg"
+            print(f"DWG: {result.paired_dwg.name} → {dwg_suggestion}")
+        print()
+
+
+def _perform_renames(mismatches: list) -> tuple[int, int]:
+    """Perform the actual file renames.
+    
+    Returns tuple of (success_count, error_count).
+    """
+    success_count = 0
+    error_count = 0
+    
+    for result in mismatches:
+        if not result.suggested_filename:
+            continue
+        
+        new_pdf_path = result.path.parent / result.suggested_filename
+        
+        # Check if target already exists
+        if new_pdf_path.exists():
+            print(f"⚠️  Cannot rename {result.path.name}: {result.suggested_filename} already exists")
+            error_count += 1
+            continue
+        
+        try:
+            # Rename PDF
+            result.path.rename(new_pdf_path)
+            print(f"✓ Renamed: {result.path.name} → {result.suggested_filename}")
+            success_count += 1
+            
+            # Rename paired DWG if exists
+            if result.paired_dwg and result.paired_dwg.exists():
+                dwg_suggestion = Path(result.suggested_filename).stem + result.paired_dwg.suffix
+                new_dwg_path = result.paired_dwg.parent / dwg_suggestion
+                
+                if new_dwg_path.exists():
+                    print(f"  ⚠️  DWG already exists: {dwg_suggestion}")
+                else:
+                    result.paired_dwg.rename(new_dwg_path)
+                    print(f"  ✓ Renamed DWG: {result.paired_dwg.name} → {dwg_suggestion}")
+        
+        except Exception as e:
+            print(f"✗ Error renaming {result.path.name}: {e}")
+            error_count += 1
+    
+    return success_count, error_count
+
+
 def run_folder_check(
     folder: Path,
     *,
@@ -94,6 +224,9 @@ def run_folder_check(
     output: Path | None = None,
     recursive: bool = False,
     progress: bool = True,
+    auto_rename: bool = False,
+    include_title: bool = False,
+    include_revision: bool = False,
 ) -> int:
     folder = folder.resolve()
     config_path = resolve_config_dir(folder, config_dir)
@@ -117,30 +250,68 @@ def run_folder_check(
 
     print(f"Found {len(pdfs)} PDF(s)")
     print()
-    results = []
+    
+    # Check all PDFs first
+    initial_results = []
     for index, path in enumerate(pdfs, start=1):
         if progress:
             print(f"[{index}/{len(pdfs)}] {path.name} ...", flush=True)
         result = check_pdf(path, config)
-        results.append(result)
+        initial_results.append(result)
         if progress:
             print(f"         {result.status.value}")
     print()
+    
+    # Apply cross-document validations with filename suggestion options
+    results = check_paths(
+        pdfs,
+        config,
+        suggest_title=include_title,
+        suggest_revision=include_revision,
+    )
 
     report_path = output if output is not None else next_available_report_path(folder, REPORT_NAME)
     saved = write_report(results, report_path)
     _print_summary(results)
     print(f"Report: {saved}")
+    
+    # Handle renaming based on mode
+    mismatches = _print_mismatch_summary(results)
+    
+    if auto_rename and mismatches:
+        # Automatic rename without prompting
+        print()
+        print("Auto-renaming files...")
+        success, errors = _perform_renames(mismatches)
+        print()
+        print(f"Renamed {success} file(s) successfully")
+        if errors:
+            print(f"Failed to rename {errors} file(s)")
+    elif progress and mismatches:
+        # Interactive mode: offer to rename
+        if _offer_rename(mismatches):
+            print()
+            print("Renaming files...")
+            success, errors = _perform_renames(mismatches)
+            print()
+            print(f"Renamed {success} file(s) successfully")
+            if errors:
+                print(f"Failed to rename {errors} file(s)")
+    
     problems = sum(1 for item in results if item.status.value != "MATCH")
     return 1 if problems else 0
 
 
 def cmd_check(args: argparse.Namespace) -> int:
+    auto_rename = getattr(args, "auto_rename", False)
+    include_title = getattr(args, "include_title", False)
+    include_revision = getattr(args, "include_revision", False)
+    
     target = args.input.resolve() if args.input is not None else app_dir()
     if target.is_file():
         config = load_config(resolve_config_dir(target.parent, args.config_dir))
         pdfs = iter_pdfs(target)
-        results = check_paths(pdfs, config)
+        results = check_paths(pdfs, config, include_title, include_revision)
         output = args.output or next_available_report_path(target.parent, REPORT_NAME)
         saved = write_report(results, output)
         _print_summary(results)
@@ -153,6 +324,9 @@ def cmd_check(args: argparse.Namespace) -> int:
         output=args.output,
         recursive=args.recursive,
         progress=True,
+        auto_rename=auto_rename,
+        include_title=include_title,
+        include_revision=include_revision,
     )
 
 
@@ -222,11 +396,24 @@ def main(argv: list[str] | None = None) -> int:
     elif pause_flag is True:
         args.pause = True
         args.no_pause = False
+    
+    # Set defaults for flags if not present (for when called without command)
+    if not hasattr(args, "auto_rename"):
+        args.auto_rename = False
+    if not hasattr(args, "include_title"):
+        args.include_title = False
+    if not hasattr(args, "include_revision"):
+        args.include_revision = False
 
     code = 0
     try:
         if args.command is None:
-            code = run_folder_check(app_dir())
+            code = run_folder_check(
+                app_dir(),
+                auto_rename=args.auto_rename,
+                include_title=args.include_title,
+                include_revision=args.include_revision,
+            )
         elif args.command == "check":
             code = cmd_check(args)
         elif args.command == "inspect":

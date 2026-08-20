@@ -29,6 +29,7 @@ build = [
 [project.scripts]
 drawing-qa = "drawing_qa.cli:main"
 tbcheck = "drawing_qa.cli:main"
+tbcheck-rename = "drawing_qa.cli_rename:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
