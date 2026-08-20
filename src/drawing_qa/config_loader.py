@@ -11,6 +11,14 @@ from drawing_qa.paths import resolve_config_dir
 
 
 @dataclass
+class SpellCheckConfig:
+    enabled: bool = True
+    language: str = "en_GB"
+    check_title: bool = True
+    fail_on_error: bool = True
+
+
+@dataclass
 class AppConfig:
     field_count: int
     revision_pattern: str
@@ -18,6 +26,7 @@ class AppConfig:
     first_page_only: bool
     compare_rules: dict[str, str]
     layouts: list[TitleBlockLayout]
+    spell_check: SpellCheckConfig | None = None
 
 
 def _rect(data: dict) -> RectFrac:
@@ -105,6 +114,15 @@ def load_config(config_dir: Path | None = None) -> AppConfig:
     if not layouts:
         raise FileNotFoundError(f"No title-block layouts found in {layouts_dir}")
 
+    # Load spell check configuration
+    spell_check_cfg = settings.get("spell_check") or {}
+    spell_check = SpellCheckConfig(
+        enabled=bool(spell_check_cfg.get("enabled", True)),
+        language=str(spell_check_cfg.get("language", "en_GB")),
+        check_title=bool(spell_check_cfg.get("check_title", True)),
+        fail_on_error=bool(spell_check_cfg.get("fail_on_error", True)),
+    )
+
     return AppConfig(
         field_count=int(filename_cfg.get("field_count", 7)),
         revision_pattern=str(
@@ -114,6 +132,7 @@ def load_config(config_dir: Path | None = None) -> AppConfig:
         first_page_only=bool(extraction_cfg.get("first_page_only", True)),
         compare_rules={str(k): str(v) for k, v in rules.items()},
         layouts=layouts,
+        spell_check=spell_check,
     )
 
 

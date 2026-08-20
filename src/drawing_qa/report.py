@@ -20,6 +20,7 @@ STATUS_FILL = {
     CheckStatus.HISTORY_MISMATCH: PatternFill("solid", fgColor="F8CBAD"),
     CheckStatus.INCOMPLETE: PatternFill("solid", fgColor="FFEB9C"),
     CheckStatus.UNDETECTED: PatternFill("solid", fgColor="DDEBF7"),
+    CheckStatus.SPELLING_ERROR: PatternFill("solid", fgColor="E4DFEC"),
     CheckStatus.FILENAME_PARSE_ERROR: PatternFill("solid", fgColor="F4B183"),
     CheckStatus.ERROR: PatternFill("solid", fgColor="D9D9D9"),
 }
@@ -213,6 +214,7 @@ def _write_summary(ws: Worksheet, results: list[DocumentResult]) -> None:
         CheckStatus.HISTORY_MISMATCH: "Current title block disagrees with the latest revision-history row",
         CheckStatus.INCOMPLETE: "Layout found, but the document reference could not be read from the title block",
         CheckStatus.UNDETECTED: "No configured layout scored high enough",
+        CheckStatus.SPELLING_ERROR: "Possible spelling error detected in title",
         CheckStatus.FILENAME_PARSE_ERROR: "Filename is not ISO 19650; title-block values are still shown",
         CheckStatus.ERROR: "PDF could not be read",
     }
