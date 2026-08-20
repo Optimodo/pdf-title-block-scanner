@@ -64,7 +64,12 @@ def check_pdf(path: Path, config: AppConfig) -> DocumentResult:
     return build_result(result, config.compare_rules, config.spell_check)
 
 
-def check_paths(paths: list[Path], config: AppConfig) -> list[DocumentResult]:
+def check_paths(
+    paths: list[Path],
+    config: AppConfig,
+    suggest_title: bool = False,
+    suggest_revision: bool = False,
+) -> list[DocumentResult]:
     results = [check_pdf(path, config) for path in paths]
     
     # Apply cross-document validations
@@ -77,6 +82,10 @@ def check_paths(paths: list[Path], config: AppConfig) -> list[DocumentResult]:
         # Generate filename suggestions for mismatches
         for result in results:
             if result.status in (CheckStatus.MISMATCH, CheckStatus.SPELLING_ERROR):
-                result.suggested_filename = suggest_filename(result)
+                result.suggested_filename = suggest_filename(
+                    result,
+                    include_title=suggest_title,
+                    include_revision=suggest_revision,
+                )
     
     return results

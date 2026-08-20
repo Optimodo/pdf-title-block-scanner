@@ -22,18 +22,21 @@ OCR for scanned PDFs is out of scope for this version. Sheets need a selectable 
 
    ```bat
    pip install -e ".[dev,build]"
-   build_exe.bat
+   python scripts/build_exe.py
    ```
 
-   The file lands in `dist\TBCheck.exe`.
+   Two executables will be created in the `dist\` folder:
+   - `TBCheck.exe` - Standard version with interactive rename prompts
+   - `TBCheckRename.exe` - Auto-rename version (includes title and revision in filenames)
 
-2. Copy `TBCheck.exe` into the folder that contains the drawing PDFs.
+2. Copy the appropriate exe into the folder that contains the drawing PDFs.
 3. Double-click. A console window lists each file, then waits for Enter.
-4. Open `TBCheckReport.xlsx` in the same folder.
+4. If mismatches are found, you'll be prompted to rename files (TBCheck.exe only).
+5. Open `TBCheckReport.xlsx` in the same folder to review results.
 
 Optional: copy a `config\` folder next to the exe to override bundled title-block layouts. If that folder is missing, the exe uses the layouts baked into it.
 
-The exe only looks at PDFs in **that folder**, not subfolders. It does not rename files and does not use the network.
+The exe looks at PDFs in **that folder**, not subfolders (unless `--recursive` is specified). It can rename files interactively based on title block values. It does not use the network.
 
 ## Run from source
 

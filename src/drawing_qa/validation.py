@@ -98,14 +98,20 @@ def check_date_regression(results: list[DocumentResult]) -> list[DocumentResult]
     return results
 
 
-def suggest_filename(result: DocumentResult) -> str | None:
+def suggest_filename(
+    result: DocumentResult,
+    include_title: bool = False,
+    include_revision: bool = False,
+) -> str | None:
     """Suggest corrected filename based on title block values.
     
     When there's a mismatch, constructs the "correct" filename from
-    the title block document reference, title, and revision.
+    the title block document reference, optionally with title and revision.
     
     Args:
         result: Document result with mismatch
+        include_title: If True, include title in suggested filename
+        include_revision: If True, include revision in suggested filename
         
     Returns:
         Suggested filename or None if cannot be determined
@@ -117,31 +123,33 @@ def suggest_filename(result: DocumentResult) -> str | None:
     if not tb.document_reference:
         return None
     
-    # Start with document reference
+    # Start with document reference (always included)
     parts = [tb.document_reference]
     
-    # Add title if present and different from filename
-    if tb.title and tb.title != result.filename.title:
+    # Add title if requested and available
+    if include_title and tb.title:
         # Clean title for filename (remove special chars)
         clean_title = tb.title.replace("/", "-").replace("\\", "-")
         clean_title = " ".join(clean_title.split())  # Normalize whitespace
         parts.append(clean_title)
     
-    # Add revision if present
-    if tb.revision:
+    # Add revision if requested and available
+    if include_revision and tb.revision:
         parts.append(tb.revision)
     
     # Construct filename
     if len(parts) == 1:
+        # Just document reference
         suggested = f"{parts[0]}.pdf"
     elif len(parts) == 2:
+        # Doc ref + one other field
         # Check if second part looks like revision (short, alphanumeric)
         if len(parts[1]) <= 5 and parts[1].replace(" ", "").isalnum():
             suggested = f"{parts[0]}-{parts[1]}.pdf"
         else:
             suggested = f"{parts[0]}_{parts[1]}.pdf"
     else:
-        # doc_ref, title, revision
+        # doc_ref + title + revision
         suggested = f"{parts[0]}_{parts[1]}_{parts[2]}.pdf"
     
     return suggested if suggested != result.path.name else None

@@ -36,6 +36,21 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Wait for Enter before exiting (default for the standalone exe).",
     )
+    parser.add_argument(
+        "--auto-rename",
+        action="store_true",
+        help="Automatically rename mismatched files without prompting.",
+    )
+    parser.add_argument(
+        "--include-title",
+        action="store_true",
+        help="Include title in suggested/renamed filenames.",
+    )
+    parser.add_argument(
+        "--include-revision",
+        action="store_true",
+        help="Include revision in suggested/renamed filenames.",
+    )
     sub = parser.add_subparsers(dest="command")
 
     check = sub.add_parser("check", help="Scan PDFs and write an Excel QA report")
@@ -209,6 +224,9 @@ def run_folder_check(
     output: Path | None = None,
     recursive: bool = False,
     progress: bool = True,
+    auto_rename: bool = False,
+    include_title: bool = False,
+    include_revision: bool = False,
 ) -> int:
     folder = folder.resolve()
     config_path = resolve_config_dir(folder, config_dir)
@@ -232,25 +250,46 @@ def run_folder_check(
 
     print(f"Found {len(pdfs)} PDF(s)")
     print()
-    results = []
+    
+    # Check all PDFs first
+    initial_results = []
     for index, path in enumerate(pdfs, start=1):
         if progress:
             print(f"[{index}/{len(pdfs)}] {path.name} ...", flush=True)
         result = check_pdf(path, config)
-        results.append(result)
+        initial_results.append(result)
         if progress:
             print(f"         {result.status.value}")
     print()
+    
+    # Apply cross-document validations with filename suggestion options
+    results = check_paths(
+        pdfs,
+        config,
+        suggest_title=include_title,
+        suggest_revision=include_revision,
+    )
 
     report_path = output if output is not None else next_available_report_path(folder, REPORT_NAME)
     saved = write_report(results, report_path)
     _print_summary(results)
     print(f"Report: {saved}")
     
-    # Offer to rename mismatched files if running interactively
-    if progress:  # progress=True means interactive mode
-        mismatches = _print_mismatch_summary(results)
-        if mismatches and _offer_rename(mismatches):
+    # Handle renaming based on mode
+    mismatches = _print_mismatch_summary(results)
+    
+    if auto_rename and mismatches:
+        # Automatic rename without prompting
+        print()
+        print("Auto-renaming files...")
+        success, errors = _perform_renames(mismatches)
+        print()
+        print(f"Renamed {success} file(s) successfully")
+        if errors:
+            print(f"Failed to rename {errors} file(s)")
+    elif progress and mismatches:
+        # Interactive mode: offer to rename
+        if _offer_rename(mismatches):
             print()
             print("Renaming files...")
             success, errors = _perform_renames(mismatches)
@@ -264,11 +303,15 @@ def run_folder_check(
 
 
 def cmd_check(args: argparse.Namespace) -> int:
+    auto_rename = getattr(args, "auto_rename", False)
+    include_title = getattr(args, "include_title", False)
+    include_revision = getattr(args, "include_revision", False)
+    
     target = args.input.resolve() if args.input is not None else app_dir()
     if target.is_file():
         config = load_config(resolve_config_dir(target.parent, args.config_dir))
         pdfs = iter_pdfs(target)
-        results = check_paths(pdfs, config)
+        results = check_paths(pdfs, config, include_title, include_revision)
         output = args.output or next_available_report_path(target.parent, REPORT_NAME)
         saved = write_report(results, output)
         _print_summary(results)
@@ -281,6 +324,9 @@ def cmd_check(args: argparse.Namespace) -> int:
         output=args.output,
         recursive=args.recursive,
         progress=True,
+        auto_rename=auto_rename,
+        include_title=include_title,
+        include_revision=include_revision,
     )
 
 
@@ -350,11 +396,24 @@ def main(argv: list[str] | None = None) -> int:
     elif pause_flag is True:
         args.pause = True
         args.no_pause = False
+    
+    # Set defaults for flags if not present (for when called without command)
+    if not hasattr(args, "auto_rename"):
+        args.auto_rename = False
+    if not hasattr(args, "include_title"):
+        args.include_title = False
+    if not hasattr(args, "include_revision"):
+        args.include_revision = False
 
     code = 0
     try:
         if args.command is None:
-            code = run_folder_check(app_dir())
+            code = run_folder_check(
+                app_dir(),
+                auto_rename=args.auto_rename,
+                include_title=args.include_title,
+                include_revision=args.include_revision,
+            )
         elif args.command == "check":
             code = cmd_check(args)
         elif args.command == "inspect":
