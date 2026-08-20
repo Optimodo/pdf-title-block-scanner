@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
 
 from drawing_qa.models import FieldSpec, HistorySpec, RectFrac, TitleBlockLayout
-from drawing_qa.paths import resolve_config_dir
+from drawing_qa.paths import bundled_config_dir, resolve_config_dir
 
 
 @dataclass
@@ -19,6 +19,14 @@ class SpellCheckConfig:
 
 
 @dataclass
+class SuitabilityCheckConfig:
+    enabled: bool = True
+    fail_on_error: bool = True
+    accept_code_only: bool = True
+    values: list[str] = field(default_factory=list)
+
+
+@dataclass
 class AppConfig:
     field_count: int
     revision_pattern: str
@@ -27,6 +35,7 @@ class AppConfig:
     compare_rules: dict[str, str]
     layouts: list[TitleBlockLayout]
     spell_check: SpellCheckConfig | None = None
+    suitability_check: SuitabilityCheckConfig | None = None
 
 
 def _rect(data: dict) -> RectFrac:
@@ -123,6 +132,22 @@ def load_config(config_dir: Path | None = None) -> AppConfig:
         fail_on_error=bool(spell_check_cfg.get("fail_on_error", True)),
     )
 
+    suitability_path = config_dir / "suitability.yaml"
+    if not suitability_path.is_file():
+        bundled = bundled_config_dir() / "suitability.yaml"
+        if bundled.is_file():
+            suitability_path = bundled
+    suitability_raw = {}
+    if suitability_path.is_file():
+        suitability_raw = yaml.safe_load(suitability_path.read_text(encoding="utf-8")) or {}
+    values = suitability_raw.get("values") or []
+    suitability_check = SuitabilityCheckConfig(
+        enabled=bool(suitability_raw.get("enabled", True)),
+        fail_on_error=bool(suitability_raw.get("fail_on_error", True)),
+        accept_code_only=bool(suitability_raw.get("accept_code_only", True)),
+        values=[str(item).strip() for item in values if str(item).strip()],
+    )
+
     return AppConfig(
         field_count=int(filename_cfg.get("field_count", 7)),
         revision_pattern=str(
@@ -133,6 +158,7 @@ def load_config(config_dir: Path | None = None) -> AppConfig:
         compare_rules={str(k): str(v) for k, v in rules.items()},
         layouts=layouts,
         spell_check=spell_check,
+        suitability_check=suitability_check,
     )
 
 

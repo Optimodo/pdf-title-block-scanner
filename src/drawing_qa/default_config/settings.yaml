@@ -20,3 +20,5 @@ spell_check:
   language: en_GB  # en_GB for UK English, en_US for US English
   check_title: true
   fail_on_error: true  # Set to false to warn only (add note but don't fail status)
+
+# Purpose-of-issue / suitability whitelist: see suitability.yaml in this folder.

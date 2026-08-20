@@ -1,9 +1,13 @@
 """Filename document-reference parsing aligned with mbs-file-tools.
 
 Rules follow https://github.com/Optimodo/mbs-file-tools (docref_core.py):
-normalize underscores, strip Explorer copy suffixes, take a trailing revision,
-match a seven-block prefix (six segments + numeric document number), handle
-compound document numbers vs YYMMDD export tails, then parse mid-revision + title.
+strip Explorer copy suffixes, take a trailing revision, match a 7- or 8-block
+prefix (six segments + numeric document number, optionally compound), handle
+YYMMDD export tails, then parse title / revision from the remainder.
+
+Underscore and `` - `` are structural separators around the document reference,
+title, and revision. Dashes *inside* the title (including ``Level 03-13`` and
+``Block I - SVP&RWP ...``) stay part of the title.
 """
 
 from __future__ import annotations
@@ -13,8 +17,20 @@ from dataclasses import dataclass, field
 
 REVISION_PC = re.compile(r"^[PC]\d{1,2}$", re.IGNORECASE)
 REVISION_OTHER = re.compile(r"^[A-Z]\d{1,2}$", re.IGNORECASE)
-_CORE_DOC_REF = re.compile(r"^((?:[^-]+-){6}\d+)(.*)$")
+# Six prefix blocks + document number. '-' or '_' may separate blocks; neither
+# belongs inside a block. The remainder (title/revision) is not converted.
+_CORE_DOC_REF = re.compile(r"^((?:[^_-]+[-_]){6}\d+)(.*)$")
 _ORIGINATOR_TOKEN = re.compile(r"^[A-Za-z]{2,}$")
+_LEADING_STRUCTURAL_SEP = re.compile(r"^(?:_|\s*-\s+|\s+|-(?=[A-Za-z0-9]))")
+_TRAILING_REVISION = re.compile(
+    r"(?:_|\s+-\s+|\s+|-)([A-Z]\d{1,2})\s*$",
+    re.IGNORECASE,
+)
+_ONLY_REV = re.compile(r"^([PC]\d{1,2}|[A-Z]\d{2})$", re.IGNORECASE)
+_MID_REV_THEN_TITLE = re.compile(
+    r"^([PC]\d{1,2}|[A-Z]\d{2})(?:_|\s+-\s+|\s+|-)(.+)$",
+    re.IGNORECASE,
+)
 
 
 @dataclass
@@ -62,17 +78,23 @@ def _norm_rev_token(raw: str) -> str:
 def _clean_title(raw: str | None) -> str | None:
     if not raw:
         return None
-    text = raw.lstrip("-").strip()
+    text = raw.strip().lstrip("-_").strip()
     return text or None
+
+
+def _strip_leading_structural_sep(tail: str) -> str:
+    text = tail.strip()
+    while text:
+        match = _LEADING_STRUCTURAL_SEP.match(text)
+        if not match:
+            break
+        text = text[match.end() :].strip()
+    return text
 
 
 def _strip_trailing_revision_suffix(s: str) -> tuple[str, str | None, list[str]]:
     rest = s.rstrip()
-    match = re.search(
-        r"(?:\s*-\s*|\s+|-)\s*([A-Z]\d{1,2})\s*$",
-        rest,
-        re.IGNORECASE,
-    )
+    match = _TRAILING_REVISION.search(rest)
     if not match:
         return rest, None, []
     tok = _norm_rev_token(match.group(1))
@@ -85,13 +107,15 @@ def _strip_trailing_revision_suffix(s: str) -> tuple[str, str | None, list[str]]
 
 
 def _parse_tail_after_docref(tail: str) -> tuple[str | None, list[str], str | None]:
+    """Parse title / mid-revision after the document reference.
+
+    Leading ``_``, `` - ``, or a glued ``-`` is a separator. Any later dashes,
+    including `` - `` inside the title, are kept.
+    """
     mid_pc: str | None = None
     mid_other: list[str] = []
     if not tail or not tail.strip():
         return None, [], None
-
-    raw = tail.rstrip()
-    ts = raw.strip()
 
     def set_mid(token: str) -> None:
         nonlocal mid_pc
@@ -101,49 +125,21 @@ def _parse_tail_after_docref(tail: str) -> tuple[str | None, list[str], str | No
         else:
             mid_other.append(tok[0].upper() + tok[1:])
 
-    only_rev = re.fullmatch(r"(?:\s*-\s*|\s+|-)\s*([PC]\d{1,2}|[A-Z]\d{2})\s*", ts, re.IGNORECASE)
+    text = _strip_leading_structural_sep(tail)
+    if not text:
+        return None, [], None
+
+    only_rev = _ONLY_REV.fullmatch(text)
     if only_rev:
         set_mid(only_rev.group(1))
         return mid_pc, mid_other, None
 
-    match = re.match(
-        r"^(?:\s*-\s*|\s+|-)\s*([PC]\d{1,2}|[A-Z]\d{2})(?:\s*-\s+|\s+-\s+|\s+-\s*|\s+|-\s*)(.+)$",
-        ts,
-        re.IGNORECASE,
-    )
+    match = _MID_REV_THEN_TITLE.match(text)
     if match:
         set_mid(match.group(1))
         return mid_pc, mid_other, _clean_title(match.group(2))
 
-    match = re.match(r"^(?:\s*-\s*|\s+|-)\s*([PC]\d{1,2}|[A-Z]\d{2})-\s*(.+)$", ts, re.IGNORECASE)
-    if match:
-        set_mid(match.group(1))
-        return mid_pc, mid_other, _clean_title(match.group(2))
-
-    match = re.search(r"\s+-\s+", raw)
-    if match:
-        return None, [], _clean_title(raw[match.end() :])
-
-    match = re.search(r"\s+-\s*(?=[A-Za-z])", raw)
-    if match:
-        return None, [], _clean_title(raw[match.end() :])
-
-    match = re.match(r"^-\s*(.+)$", ts)
-    if match:
-        rest = match.group(1).strip()
-        if re.fullmatch(r"[A-Z]\d{1,2}", rest, re.IGNORECASE):
-            set_mid(rest)
-            return mid_pc, mid_other, None
-        return None, [], _clean_title(rest)
-
-    match = re.match(r"^\s+(.+)$", ts)
-    if match:
-        return None, [], _clean_title(match.group(1))
-
-    if re.match(r"^[A-Za-z]", ts):
-        return None, [], _clean_title(ts)
-
-    return None, [], None
+    return None, [], _clean_title(text)
 
 
 def _pop_trailing_revisions(parts: list[str]) -> tuple[list[str], str | None, list[str]]:
@@ -168,7 +164,7 @@ def _is_yymmdd(value: str) -> bool:
 
 
 def _strip_date_originator_from_tail(tail: str) -> tuple[str, str | None]:
-    match = re.match(r"^-(\d{6})(?:-([A-Za-z]{2,}))?(.*)$", tail)
+    match = re.match(r"^[-_](\d{6})(?:[-_]([A-Za-z]{2,}))?(.*)$", tail)
     if not match or not _is_yymmdd(match.group(1)):
         return tail, None
     date, org, rest = match.group(1), match.group(2), match.group(3)
@@ -180,25 +176,25 @@ def _strip_date_originator_from_tail(tail: str) -> tuple[str, str | None]:
 
 def _extend_compound_or_strip_date_suffix(base: str, tail: str) -> tuple[str, str, list[str]]:
     notes: list[str] = []
-    match = re.match(r"^-(\d+)(.*)$", tail)
+    match = re.match(r"^[-_](\d+)(.*)$", tail)
     if match:
         second, rest = match.group(1), match.group(2)
         if _is_yymmdd(second):
-            org_m = re.match(r"^-([A-Za-z]{2,})(.*)$", rest)
+            org_m = re.match(r"^[-_]([A-Za-z]{2,})(.*)$", rest)
             if org_m and _ORIGINATOR_TOKEN.match(org_m.group(1)):
                 removed = f"{second}-{org_m.group(1)}"
                 rest = org_m.group(2)
             else:
                 removed = second
             notes.append(f"removed date/originator export suffix {removed!r}")
-            return base, rest, notes
-        base = f"{base}-{second}"
+            return base.replace("_", "-"), rest, notes
+        base = f"{base.replace('_', '-')}-{second}"
         tail = rest
 
     tail, removed = _strip_date_originator_from_tail(tail)
     if removed is not None:
         notes.append(f"removed date/originator export suffix {removed!r}")
-    return base, tail, notes
+    return base.replace("_", "-"), tail, notes
 
 
 def _title_is_date_originator_only(title: str | None) -> bool:
@@ -243,7 +239,7 @@ def _extract_body_and_docnum(parts: list[str]) -> tuple[list[str], str] | None:
 
 def parse_name_without_ext(name_without_ext: str) -> ParseResult:
     warnings: list[str] = []
-    stem = normalize_stem(name_without_ext)
+    stem = name_without_ext.strip()
     stem, copy_tails = strip_windows_duplicate_suffix(stem)
     if copy_tails:
         warnings.append(

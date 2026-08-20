@@ -23,8 +23,10 @@ STATUS_FILL = {
     CheckStatus.SPELLING_ERROR: PatternFill("solid", fgColor="E4DFEC"),
     CheckStatus.DUPLICATE_REFERENCE: PatternFill("solid", fgColor="FFB6C1"),
     CheckStatus.DATE_REGRESSION: PatternFill("solid", fgColor="FFA07A"),
+    CheckStatus.SUITABILITY_ERROR: PatternFill("solid", fgColor="F4B183"),
     CheckStatus.FILENAME_PARSE_ERROR: PatternFill("solid", fgColor="F4B183"),
     CheckStatus.ERROR: PatternFill("solid", fgColor="D9D9D9"),
+    CheckStatus.MULTIPLE_ISSUES: PatternFill("solid", fgColor="C65911"),
 }
 CONF_FILL = {
     Confidence.HIGH: PatternFill("solid", fgColor="C6EFCE"),
@@ -40,9 +42,9 @@ ROW_HEIGHT = 62
 PREVIEW_COL_WIDTH = round(PREVIEW_W / 7.0, 1)
 
 COLUMNS = [
-    ("Status", 18),
+    ("Status", 42),
     ("Confidence", 12),
-    ("File", 35),
+    ("File (as scanned)", 35),
     ("Filename doc ref", 35),
     ("Title-block doc ref", 35),
     ("Filename title", 35),
@@ -54,12 +56,21 @@ COLUMNS = [
     ("History latest", 40),
     ("History check", 14),
     ("Preview (detected fields)", PREVIEW_COL_WIDTH),
-    ("Suggested filename", 40),
+    ("New filename", 45),
+    ("Rename result", 28),
     ("DWG pairing", 35),
     ("Notes", 60),
 ]
 PREVIEW_COL = 14
 HISTORY_CHECK_COL = 13
+RENAME_RESULT_COL = 16
+
+RENAME_FILL = {
+    "Renamed": PatternFill("solid", fgColor="BDD7EE"),
+    "Unchanged": PatternFill("solid", fgColor="C6EFCE"),
+    "Not renamed": PatternFill("solid", fgColor="D9D9D9"),
+    "Failed": PatternFill("solid", fgColor="FFC7CE"),
+}
 
 
 def _comp(result: DocumentResult, name: str):
@@ -78,11 +89,13 @@ def _hcomp(result: DocumentResult, name: str):
 
 def _dwg_pairing_text(result: DocumentResult) -> str:
     """Generate text for DWG pairing column."""
-    if not result.paired_dwg:
-        return ""
-    if result.dwg_mismatch:
-        return f"{result.paired_dwg.name} (mismatch)"
-    return result.paired_dwg.name
+    if result.paired_dwg:
+        if result.dwg_mismatch:
+            return f"{result.paired_dwg.name} (name mismatch)"
+        return result.paired_dwg.name
+    if result.dwg_files_present:
+        return "No matching DWG"
+    return "No DWGs in folder"
 
 
 def _history_check(result: DocumentResult) -> str:
@@ -104,11 +117,24 @@ def _latest_history_label(result: DocumentResult) -> str:
     return " · ".join(parts)
 
 
+def _rename_fill(result: DocumentResult) -> PatternFill | None:
+    text = result.rename_result or ""
+    if text.startswith("Renamed"):
+        return RENAME_FILL["Renamed"]
+    if text.startswith("Unchanged"):
+        return RENAME_FILL["Unchanged"]
+    if text.startswith("Failed"):
+        return RENAME_FILL["Failed"]
+    if text.startswith("Not renamed"):
+        return RENAME_FILL["Not renamed"]
+    return None
+
+
 def _row(result: DocumentResult) -> list[object]:
     return [
-        result.status.value,
+        result.status_label(),
         result.confidence.value,
-        result.path.name,
+        result.original_filename or result.path.name,
         result.filename.document_reference or "",
         result.titleblock.document_reference or "",
         result.filename.title or "",
@@ -121,6 +147,7 @@ def _row(result: DocumentResult) -> list[object]:
         _history_check(result),
         "",  # Preview column (filled separately)
         result.suggested_filename or "",
+        result.rename_result or "",
         _dwg_pairing_text(result),
         "; ".join(result.notes + ([result.error] if result.error else [])),
     ]
@@ -161,6 +188,8 @@ def _write_rows(ws: Worksheet, results: list[DocumentResult], keep: list) -> Non
         row_idx = ws.max_row
         ws.row_dimensions[row_idx].height = ROW_HEIGHT
         status_fill = STATUS_FILL.get(result.status)
+        if result.status == CheckStatus.MULTIPLE_ISSUES:
+            status_fill = STATUS_FILL[CheckStatus.MULTIPLE_ISSUES]
         if status_fill:
             ws.cell(row_idx, 1).fill = status_fill
         conf_fill = CONF_FILL.get(result.confidence)
@@ -180,6 +209,9 @@ def _write_rows(ws: Worksheet, results: list[DocumentResult], keep: list) -> Non
             cell.font = BODY_FONT
         if result.preview_png:
             _add_preview(ws, row_idx, result.preview_png, keep)
+        rename_fill = _rename_fill(result)
+        if rename_fill:
+            ws.cell(row_idx, RENAME_RESULT_COL).fill = rename_fill
     last = get_column_letter(len(COLUMNS))
     ws.auto_filter.ref = f"A1:{last}{ws.max_row}"
 
@@ -232,8 +264,10 @@ def _write_summary(ws: Worksheet, results: list[DocumentResult]) -> None:
         CheckStatus.SPELLING_ERROR: "Possible spelling error detected in title",
         CheckStatus.DUPLICATE_REFERENCE: "Multiple PDFs have the same document reference",
         CheckStatus.DATE_REGRESSION: "Revision dates go backwards (later rev has earlier date)",
+        CheckStatus.SUITABILITY_ERROR: "Purpose of issue / suitability is not in the whitelist",
         CheckStatus.FILENAME_PARSE_ERROR: "Filename is not ISO 19650; title-block values are still shown",
         CheckStatus.ERROR: "PDF could not be read",
+        CheckStatus.MULTIPLE_ISSUES: "More than one issue — see Notes and the status list in column A",
     }
     row = 11
     for status in CheckStatus:
@@ -247,6 +281,41 @@ def _write_summary(ws: Worksheet, results: list[DocumentResult]) -> None:
         for col in range(1, 4):
             ws.cell(row, col).font = BODY_FONT
         row += 1
+
+    if any(item.rename_result for item in results):
+        row += 1
+        ws.cell(row, 1, "Rename")
+        ws.cell(row, 2, "Count")
+        ws.cell(row, 3, "Meaning")
+        for col in ("A", "B", "C"):
+            ws[f"{col}{row}"].font = HEADER_FONT
+            ws[f"{col}{row}"].fill = HEADER_FILL
+        row += 1
+        renamed = sum(1 for item in results if (item.rename_result or "").startswith("Renamed"))
+        unchanged = sum(1 for item in results if (item.rename_result or "").startswith("Unchanged"))
+        skipped = sum(1 for item in results if (item.rename_result or "").startswith("Not renamed"))
+        failed = sum(1 for item in results if (item.rename_result or "").startswith("Failed"))
+        for label, count, fill in (
+            ("Renamed", renamed, RENAME_FILL["Renamed"]),
+            ("Unchanged", unchanged, RENAME_FILL["Unchanged"]),
+            ("Not renamed / skipped", skipped, RENAME_FILL["Not renamed"]),
+            ("Failed", failed, RENAME_FILL["Failed"]),
+        ):
+            ws.cell(row, 1, label)
+            ws.cell(row, 2, count)
+            ws.cell(row, 1).fill = fill
+            for col in range(1, 3):
+                ws.cell(row, col).font = BODY_FONT
+            row += 1
+        ws.cell(row, 1, "File (as scanned) is the name at the start of this run.")
+        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=6)
+        ws.cell(row, 1).font = BODY_FONT
+        ws.cell(row, 1).alignment = Alignment(wrap_text=True)
+        row += 1
+        ws.cell(row, 1, "New filename is the name after this run (or the intended name if the rename was not applied).")
+        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=6)
+        ws.cell(row, 1).font = BODY_FONT
+        ws.cell(row, 1).alignment = Alignment(wrap_text=True)
 
     ws.column_dimensions["A"].width = 24
     ws.column_dimensions["B"].width = 12

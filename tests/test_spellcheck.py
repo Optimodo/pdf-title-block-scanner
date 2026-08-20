@@ -78,9 +78,13 @@ def test_spelling_preserves_mismatch_status(tmp_path: Path, config_dir: Path):
     )
     result = check_pdf(pdf, load_config(config_dir))
     
-    # Should be MISMATCH (more serious) not SPELLING_ERROR
-    assert result.status == CheckStatus.MISMATCH
-    # But spelling errors should still be noted
+    # Should list both issues instead of hiding spelling behind MISMATCH
+    assert result.status == CheckStatus.MULTIPLE_ISSUES
+    assert CheckStatus.MISMATCH in result.issues
+    assert CheckStatus.SPELLING_ERROR in result.issues
+    assert result.status_label().startswith("MULTIPLE:")
+    assert "MISMATCH" in result.status_label()
+    assert "SPELLING_ERROR" in result.status_label()
     assert len(result.spelling_errors) > 0
 
 
@@ -94,6 +98,30 @@ def test_uk_spelling_accepted(tmp_path: Path, config_dir: Path):
     )
     result = check_pdf(pdf, load_config(config_dir))
     
-    # UK spellings should be accepted
+    assert result.status == CheckStatus.MATCH
+    assert len(result.spelling_errors) == 0
+
+
+def test_ampersand_abbreviations_not_flagged(tmp_path: Path, config_dir: Path):
+    pdf = write_bottom_right_pdf(
+        tmp_path / "ABC-WXY-ZZ-00-DR-A-0001-P01.pdf",
+        document_reference="ABC-WXY-ZZ-00-DR-A-0001",
+        title="Block I - SVP&RWP Services Drawing - Level 03-13",
+        revision="P01",
+    )
+    result = check_pdf(pdf, load_config(config_dir))
+    assert result.status == CheckStatus.MATCH
+    assert len(result.spelling_errors) == 0
+
+
+def test_level_codes_not_flagged_as_spelling_errors(tmp_path: Path, config_dir: Path):
+    pdf = write_bottom_right_pdf(
+        tmp_path / "ABC-WXY-ZZ-00-DR-A-0001-P01.pdf",
+        document_reference="ABC-WXY-ZZ-00-DR-A-0001",
+        title="Mechanical Services Layout - Level B1M - Sheet 1 of 7",
+        revision="P01",
+    )
+    result = check_pdf(pdf, load_config(config_dir))
+    assert "bm" not in [e.lower() for e in result.spelling_errors]
     assert result.status == CheckStatus.MATCH
     assert len(result.spelling_errors) == 0

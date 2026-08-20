@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""
-TBCheckRename - Entry point for auto-rename variant.
-
-This executable automatically renames files to include document reference,
-title, and revision from the title block. No user prompt is given.
-"""
+"""TBCheckRename — QA check then auto-rename to doc-ref_title_revision."""
 
 import sys
 

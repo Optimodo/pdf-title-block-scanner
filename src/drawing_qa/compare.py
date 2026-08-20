@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 
-from drawing_qa.config_loader import SpellCheckConfig
+from drawing_qa.config_loader import SpellCheckConfig, SuitabilityCheckConfig
 from drawing_qa.models import (
     CheckStatus,
     Confidence,
@@ -10,8 +10,11 @@ from drawing_qa.models import (
     FieldComparison,
     FilenameFields,
     TitleBlockFields,
+    finalize_status,
+    record_issue,
 )
 from drawing_qa.spellcheck import check_spelling, format_spelling_note
+from drawing_qa.suitability import suitability_is_allowed, suitability_whitelist_note
 from drawing_qa.tokens import dates_equal, suitability_code
 
 
@@ -227,6 +230,7 @@ def build_result(
     result: DocumentResult,
     rules: dict[str, str],
     spell_check_config: SpellCheckConfig | None = None,
+    suitability_check_config: SuitabilityCheckConfig | None = None,
 ) -> DocumentResult:
     comparisons, history_comps, status, notes = compare_document(
         result.filename, result.titleblock, rules
@@ -238,26 +242,41 @@ def build_result(
     result.notes = list(
         dict.fromkeys(result.notes + notes + result.filename.notes + result.titleblock.notes)
     )
+    if status != CheckStatus.MATCH:
+        record_issue(result, status)
 
     # Run spell checking if enabled
     if spell_check_config and spell_check_config.enabled and spell_check_config.check_title:
         title_to_check = result.titleblock.title
         if title_to_check:
-            misspelled, suggestions = check_spelling(
-                title_to_check,
-                language=spell_check_config.language,
-            )
+            try:
+                misspelled, suggestions = check_spelling(
+                    title_to_check,
+                    language=spell_check_config.language,
+                )
+            except Exception as exc:  # noqa: BLE001 - never abort a folder scan for spellcheck
+                result.notes.append(f"Spell check skipped: {exc}")
+                misspelled, suggestions = [], []
             if misspelled:
                 result.spelling_errors = misspelled
                 spell_note = format_spelling_note(misspelled, suggestions)
                 result.notes.append(spell_note)
-
-                # Update status if configured to fail on spelling errors
                 if spell_check_config.fail_on_error:
-                    # Only override if current status is MATCH or FILENAME_PARSE_ERROR
-                    # Don't override more serious issues like MISMATCH
-                    if result.status in (CheckStatus.MATCH, CheckStatus.FILENAME_PARSE_ERROR):
-                        result.status = CheckStatus.SPELLING_ERROR
-                        result.confidence = Confidence.REVIEW
+                    record_issue(result, CheckStatus.SPELLING_ERROR)
 
+    if (
+        suitability_check_config
+        and suitability_check_config.enabled
+        and result.titleblock.suitability
+    ):
+        if not suitability_is_allowed(
+            result.titleblock.suitability,
+            suitability_check_config.values,
+            accept_code_only=suitability_check_config.accept_code_only,
+        ):
+            result.notes.append(suitability_whitelist_note(result.titleblock.suitability))
+            if suitability_check_config.fail_on_error:
+                record_issue(result, CheckStatus.SUITABILITY_ERROR)
+
+    finalize_status(result)
     return result

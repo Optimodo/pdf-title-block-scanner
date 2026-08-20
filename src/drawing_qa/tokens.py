@@ -4,7 +4,7 @@ import re
 from datetime import date, datetime
 
 REV_TOKEN = re.compile(r"^(?:[PC]\d{2}|[A-Z]\d?)$", re.IGNORECASE)
-SUITABILITY_TOKEN = re.compile(r"^(?:S[0-7]|A[1-3]|B[1-2])$", re.IGNORECASE)
+SUITABILITY_TOKEN = re.compile(r"^(?:S[0-7]|A[0-9]|B[0-9]|CR)$", re.IGNORECASE)
 DATE_TOKEN = re.compile(
     r"^("
     r"\d{1,2}[./\-]\d{1,2}[./\-]\d{2,4}"
@@ -19,7 +19,7 @@ DATE_IN_TEXT = re.compile(
     re.IGNORECASE,
 )
 SUITABILITY_IN_TEXT = re.compile(
-    r"\b(S[0-7]|A[1-3]|B[1-2])\b",
+    r"\b(S[0-7]|A[0-9]|B[0-9]|CR)\b",
     re.IGNORECASE,
 )
 # Cut neighbouring title-block roles out of a suitability capture.

@@ -68,3 +68,37 @@ def test_suitability_code_and_description_stop_at_designed_by():
     from drawing_qa.tokens import extract_suitability
 
     assert extract_suitability(found[0]) == "A - CONSTRUCTION"
+
+
+def test_drawing_number_below_and_left_of_label():
+    words = [
+        Word(x0=3140, y0=2308, x1=3183, y1=2320, text="Drawing"),
+        Word(x0=3185, y0=2308, x1=3200, y1=2320, text="No"),
+        Word(x0=3271, y0=2308, x1=3310, y1=2320, text="Revision"),
+        Word(x0=3064, y0=2323, x1=3280, y1=2336, text="R456-MAL20-BI-02-DR-W-655-004"),
+        Word(x0=3276, y0=2320, x1=3300, y1=2336, text="P01"),
+    ]
+    found = extract_near_label_words(
+        words, ["DRAWING NO"], "auto", stop_labels=["REVISION", "REV"]
+    )
+    assert found is not None
+    assert "R456-MAL20-BI-02-DR-W-655-004" in found[0]
+
+
+def test_title_includes_word_starting_under_the_label():
+    words = [
+        Word(x0=3060, y0=2189, x1=3091, y1=2201, text="Drawing"),
+        Word(x0=3093, y0=2189, x1=3110, y1=2201, text="Title"),
+        Word(x0=3064, y0=2208, x1=3092, y1=2220, text="Block"),
+        Word(x0=3094, y0=2208, x1=3100, y1=2220, text="I"),
+        Word(x0=3106, y0=2208, x1=3159, y1=2220, text="SVP&RWP"),
+        Word(x0=3251, y0=2208, x1=3280, y1=2220, text="Level"),
+        Word(x0=3280, y0=2208, x1=3310, y1=2220, text="03-13"),
+        Word(x0=3060, y0=2274, x1=3084, y1=2286, text="Scale"),
+    ]
+    found = extract_near_label_words(
+        words, ["DRAWING TITLE", "TITLE"], "auto", stop_labels=["SCALE"]
+    )
+    assert found is not None
+    assert found[0].startswith("Block I")
+    assert "03-13" in found[0]

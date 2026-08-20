@@ -32,23 +32,20 @@ ABC-WXY-ZZ-00-DR-A-0001-C02.pdf  (title block also says: ABC-WXY-ZZ-00-DR-A-0001
 ## ✅ Feature 2: Filename Suggestions
 
 **What it does:**  
-When a PDF's filename doesn't match its title block, suggests the correct filename.
+When the **filename document reference** disagrees with the **title-block document reference**, suggests a rename that swaps in the title-block ref and **keeps the rest of the existing name**. Bulk strip-to-doc-ref and “add title/revision” renaming belong in [mbs-file-tools](https://github.com/Optimodo/mbs-file-tools), not TBCheck.
 
 **Example:**
 ```
-Current filename:    WRONG-NAME-P01.pdf
-Title block says:    Doc Ref: ABC-WXY-ZZ-00-DR-A-0001
-                     Title: Floor Plan
-                     Revision: P01
-                     
-Suggested filename:  ABC-WXY-ZZ-00-DR-A-0001_Floor Plan_P01.pdf
+Current filename:    XYZ-DEF-AA-BB-DR-M-9999_Ground Floor_P01.pdf
+Title block doc ref: ABC-WXY-ZZ-00-DR-A-0001
+
+Suggested filename:  ABC-WXY-ZZ-00-DR-A-0001_Ground Floor_P01.pdf
 ```
 
 **Result:**
-- New column in Excel: "Suggested filename"
-- Shows corrected name for MISMATCH and SPELLING_ERROR statuses
-- Uses title block values (doc ref + title + revision)
-- Formats with underscores for readability
+- Excel column: "Suggested filename"
+- Only when the document references differ (not for title-only or MATCH)
+- Does not inject title-block title/revision, and does not strip extra text
 
 ---
 
@@ -88,49 +85,19 @@ Checked 5 PDF(s)
 Found 3 file(s) with document reference mismatches:
 ================================================================================
 
-1. WRONG-NAME-P01.pdf
-   Filename doc ref: (none)
-   Title block doc ref: ABC-WXY-ZZ-00-DR-A-0001
-   Suggested: ABC-WXY-ZZ-00-DR-A-0001-P01.pdf
-   Paired DWG: WRONG-NAME-P01.dwg (naming mismatch)
-
-2. ABC-WXY-ZZ-00-DR-A-0002-OLD-REV.pdf
-   Filename doc ref: ABC-WXY-ZZ-00-DR-A-0002
-   Title block doc ref: ABC-WXY-ZZ-00-DR-A-0002
-   Suggested: ABC-WXY-ZZ-00-DR-A-0002-C03.pdf
-
-3. XYZ-DEF-AA-BB-DR-M-9999-P01.pdf
+1. XYZ-DEF-AA-BB-DR-M-9999_Ground Floor_P01.pdf
    Filename doc ref: XYZ-DEF-AA-BB-DR-M-9999
    Title block doc ref: ABC-WXY-ZZ-00-DR-A-0003
-   Suggested: ABC-WXY-ZZ-00-DR-A-0003-P01.pdf
-   Paired DWG: XYZ-DEF-AA-BB-DR-M-9999-P01.dwg
+   Suggested: ABC-WXY-ZZ-00-DR-A-0003_Ground Floor_P01.pdf
+   Paired DWG: XYZ-DEF-AA-BB-DR-M-9999_Ground Floor_P01.dwg
 
 ================================================================================
-Would you like to rename these files to match their title blocks?
-This will rename PDFs (and paired DWG files) to the suggested names.
+Would you like to rename these files so the filename document
+reference matches the title block?
+Only the document reference is replaced; any title or revision
+already in the filename is kept. Paired DWG files are renamed too.
 ================================================================================
-Rename files? (yes/no/preview): preview
-
-Preview of changes:
---------------------------------------------------------------------------------
-PDF: WRONG-NAME-P01.pdf → ABC-WXY-ZZ-00-DR-A-0001-P01.pdf
-DWG: WRONG-NAME-P01.dwg → ABC-WXY-ZZ-00-DR-A-0001-P01.dwg
-
-PDF: ABC-WXY-ZZ-00-DR-A-0002-OLD-REV.pdf → ABC-WXY-ZZ-00-DR-A-0002-C03.pdf
-
-PDF: XYZ-DEF-AA-BB-DR-M-9999-P01.pdf → ABC-WXY-ZZ-00-DR-A-0003-P01.pdf
-DWG: XYZ-DEF-AA-BB-DR-M-9999-P01.dwg → ABC-WXY-ZZ-00-DR-A-0003-P01.dwg
-
 Rename files? (yes/no/preview): yes
-
-Renaming files...
-✓ Renamed: WRONG-NAME-P01.pdf → ABC-WXY-ZZ-00-DR-A-0001-P01.pdf
-  ✓ Renamed DWG: WRONG-NAME-P01.dwg → ABC-WXY-ZZ-00-DR-A-0001-P01.dwg
-✓ Renamed: ABC-WXY-ZZ-00-DR-A-0002-OLD-REV.pdf → ABC-WXY-ZZ-00-DR-A-0002-C03.pdf
-✓ Renamed: XYZ-DEF-AA-BB-DR-M-9999-P01.pdf → ABC-WXY-ZZ-00-DR-A-0003-P01.pdf
-  ✓ Renamed DWG: XYZ-DEF-AA-BB-DR-M-9999-P01.dwg → ABC-WXY-ZZ-00-DR-A-0003-P01.dwg
-
-Renamed 3 file(s) successfully
 ```
 
 **Features:**
@@ -142,11 +109,8 @@ Renamed 3 file(s) successfully
 - Handles errors gracefully
 
 **When it runs:**
-- ✅ Double-click TBCheck.exe
-- ✅ `python tbcheck.py` (without --no-pause)
-- ✅ `drawing-qa check` (default mode)
-- ❌ `drawing-qa check --no-pause` (skips prompts)
-- ❌ Scripted/automated runs
+- After a folder scan, if any file has a document-reference mismatch
+- Interactive yes/no/preview (not automatic; no TBCheckRename / --auto-rename)
 
 ---
 

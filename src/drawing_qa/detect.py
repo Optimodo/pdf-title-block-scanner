@@ -126,28 +126,52 @@ def extract_titleblock(
     layouts: list[TitleBlockLayout],
     min_score: float,
 ) -> TitleBlockFields:
-    best: tuple[float, TitleBlockLayout, list[Word]] | None = None
+    candidates: list[tuple[float, TitleBlockLayout]] = []
     for layout in layouts:
         words = extract_words(page, layout.region)
         score = score_layout(words, layout)
-        if best is None or score > best[0]:
-            best = (score, layout, words)
+        threshold = max(min_score, layout.min_score)
+        if score >= threshold:
+            candidates.append((score, layout))
+    candidates.sort(key=lambda item: item[0], reverse=True)
 
-    if best is None:
-        return TitleBlockFields(notes=["No layouts configured"])
+    if not candidates:
+        best: tuple[float, TitleBlockLayout] | None = None
+        for layout in layouts:
+            words = extract_words(page, layout.region)
+            score = score_layout(words, layout)
+            if best is None or score > best[0]:
+                best = (score, layout)
+        if best is None:
+            return TitleBlockFields(notes=["No layouts configured"])
+        score, layout = best
+        result = TitleBlockFields(
+            layout_id=layout.id,
+            layout_name=layout.name,
+            score=round(score, 3),
+        )
+        threshold = max(min_score, layout.min_score)
+        result.notes.append(
+            f"Best layout '{layout.id}' scored {score:.2f}, below threshold {threshold:.2f}"
+        )
+        return result
 
-    score, layout, _words = best
+    filled: list[TitleBlockFields] = []
+    for score, layout in candidates:
+        item = _extract_layout_fields(page, layout, score)
+        filled.append(item)
+        if item.document_reference:
+            break
+    chosen = next((item for item in filled if item.document_reference), filled[0])
+    return chosen
+
+
+def _extract_layout_fields(page, layout: TitleBlockLayout, score: float) -> TitleBlockFields:
     result = TitleBlockFields(
         layout_id=layout.id,
         layout_name=layout.name,
         score=round(score, 3),
     )
-    threshold = max(min_score, layout.min_score)
-    if score < threshold:
-        result.notes.append(
-            f"Best layout '{layout.id}' scored {score:.2f}, below threshold {threshold:.2f}"
-        )
-        return result
 
     history_words = extract_words(page, history_search_region(layout))
     result.history = detect_revision_history(history_words, layout.history)

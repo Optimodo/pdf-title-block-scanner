@@ -14,11 +14,11 @@ ENTRY_RENAME = ROOT / "tbcheck_rename.py"
 
 def build_executable(entry_script: Path, exe_name: str) -> int:
     """Build a single executable with PyInstaller.
-    
+
     Args:
         entry_script: Path to entry point script
         exe_name: Name for the output executable
-        
+
     Returns:
         Exit code
     """
@@ -45,6 +45,8 @@ def build_executable(entry_script: Path, exe_name: str) -> int:
         "--hidden-import",
         "spellchecker",
         "--collect-all",
+        "spellchecker",
+        "--collect-all",
         "PIL",
         "--add-data",
         add_data,
@@ -56,20 +58,21 @@ def build_executable(entry_script: Path, exe_name: str) -> int:
 
 
 def main() -> int:
-    """Build both TBCheck and TBCheckRename executables."""
-    # Build standard TBCheck
+    """Build TBCheck.exe and TBCheckRename.exe."""
     code = build_executable(ENTRY, "TBCheck")
     if code != 0:
         print(f"\nERROR: Failed to build TBCheck (exit code {code})")
         return code
-    
-    # Build auto-rename variant
+
     code = build_executable(ENTRY_RENAME, "TBCheckRename")
     if code != 0:
         print(f"\nERROR: Failed to build TBCheckRename (exit code {code})")
         return code
-    
-    print("\n✓ Both executables built successfully")
+
+    try:
+        print("\n✓ Both executables built successfully")
+    except UnicodeEncodeError:
+        print("\nOK: Both executables built successfully")
     return 0
 
 

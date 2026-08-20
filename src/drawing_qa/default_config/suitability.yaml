@@ -1,0 +1,90 @@
+# Accepted purpose-of-issue / suitability / status values.
+#
+# Copy this file (with settings.yaml) into a config\ folder next to TBCheck.exe
+# to override the bundled list. Matching ignores case, extra spaces, and treats
+# "&" as "and".
+#
+# Starting point: ISO 19650-2 UK National Annex Table NA.1
+# (UK BIM Framework Guidance Part C). 2021 NA wording is also listed where it
+# differs. Delete or add rows to match your project's information standard.
+
+enabled: true
+fail_on_error: true
+# If the title block only has a code (e.g. "S3") and that code appears in any
+# entry below, accept it. Set false to require a full code + description match.
+accept_code_only: true
+
+values:
+  # --- ISO 19650-2 NA.1: Work in progress ---
+  - S0 - Initial status
+  - S0 - Information developed within a task team
+
+  # --- ISO 19650-2 NA.1: Shared (non-contractual) ---
+  - S1 - Suitable for coordination
+  - S1 - Coordination
+  - S2 - Suitable for information
+  - S2 - Suitable for information/reference
+  - S2 - Information
+  - S2 - Information/reference
+  - S3 - Suitable for review and comment
+  - S3 - Review and comment
+  - S3 - Review & Comment
+  - S4 - Suitable for stage approval
+  - S4 - Stage approval
+  - S4 - Suitable for review and authorisation
+  - S4 - Suitable for review and authorization
+  - S4 - Review and authorisation
+  - S5 - Withdrawn
+  - S5 - Suitable for review and acceptance
+  - S5 - Review and acceptance
+  - S6 - Suitable for PIM authorisation
+  - S6 - Suitable for PIM authorization
+  - S6 - PIM authorisation
+  - S7 - Suitable for AIM authorisation
+  - S7 - Suitable for AIM authorization
+  - S7 - AIM authorisation
+
+  # --- ISO 19650-2 NA.1: Published (contractual) ---
+  # An = authorised for that work stage (A1 = stage 1, A2 = stage 2, …)
+  - A1 - Authorised and accepted
+  - A1 - Authorized and accepted
+  - A1 - Authorisation or acceptance
+  - A2 - Authorised and accepted
+  - A2 - Authorized and accepted
+  - A2 - Authorisation or acceptance
+  - A3 - Authorised and accepted
+  - A3 - Authorized and accepted
+  - A3 - Authorisation or acceptance
+  - A4 - Authorised and accepted
+  - A4 - Authorized and accepted
+  - A4 - Authorisation or acceptance
+  - A5 - Authorised and accepted
+  - A5 - Authorized and accepted
+  - A5 - Authorisation or acceptance
+  - A6 - Authorised and accepted
+  - A6 - Authorized and accepted
+  - A6 - Authorisation or acceptance
+  - A7 - Authorised and accepted
+  - A7 - Authorized and accepted
+  - A7 - Authorisation or acceptance
+  - B1 - Partial sign-off with comments
+  - B1 - Partial sign-off (with comments)
+  - B1 - Partial-authorisation or acceptance
+  - B2 - Partial sign-off with comments
+  - B2 - Partial sign-off (with comments)
+  - B2 - Partial-authorisation or acceptance
+  - B3 - Partial sign-off with comments
+  - B4 - Partial sign-off with comments
+  - B5 - Partial sign-off with comments
+  - B6 - Partial sign-off with comments
+  - B7 - Partial sign-off with comments
+
+  # --- ISO 19650-2 NA.1: Published for AIM acceptance ---
+  - CR - As constructed record document
+  - CR - As-constructed record document
+
+  # --- Common on UK title blocks (not NA.1 wording — delete if you want strict ISO) ---
+  - A - Construction
+  - A - For Construction
+  - S2 - Suitable for tender
+  - S4 - Construction

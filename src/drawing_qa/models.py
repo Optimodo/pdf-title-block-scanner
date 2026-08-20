@@ -14,8 +14,10 @@ class CheckStatus(StrEnum):
     SPELLING_ERROR = "SPELLING_ERROR"
     DUPLICATE_REFERENCE = "DUPLICATE_REFERENCE"
     DATE_REGRESSION = "DATE_REGRESSION"
+    SUITABILITY_ERROR = "SUITABILITY_ERROR"
     FILENAME_PARSE_ERROR = "FILENAME_PARSE_ERROR"
     ERROR = "ERROR"
+    MULTIPLE_ISSUES = "MULTIPLE_ISSUES"
 
 
 class Confidence(StrEnum):
@@ -227,5 +229,42 @@ class DocumentResult:
     preview_png: bytes | None = None
     spelling_errors: list[str] = field(default_factory=list)
     suggested_filename: str | None = None
+    original_filename: str = ""
+    rename_result: str | None = None
     paired_dwg: Path | None = None
     dwg_mismatch: bool = False
+    dwg_files_present: bool = False
+    issues: list[CheckStatus] = field(default_factory=list)
+
+    def status_label(self) -> str:
+        """Status text for the report: one code, or MULTIPLE plus every issue."""
+        issues = [item for item in self.issues if item != CheckStatus.MULTIPLE_ISSUES]
+        if not issues:
+            return self.status.value
+        if len(issues) == 1:
+            return issues[0].value
+        return "MULTIPLE: " + ", ".join(item.value for item in issues)
+
+
+def record_issue(result: DocumentResult, status: CheckStatus) -> None:
+    if status in (CheckStatus.MATCH, CheckStatus.MULTIPLE_ISSUES):
+        return
+    if status not in result.issues:
+        result.issues.append(status)
+
+
+def finalize_status(result: DocumentResult) -> None:
+    """Collapse recorded issues into status / MULTIPLE_ISSUES."""
+    issues = [item for item in result.issues if item not in (CheckStatus.MATCH, CheckStatus.MULTIPLE_ISSUES)]
+    if (
+        result.status not in (CheckStatus.MATCH, CheckStatus.MULTIPLE_ISSUES)
+        and result.status not in issues
+    ):
+        issues.insert(0, result.status)
+    result.issues = issues
+    if not issues:
+        result.status = CheckStatus.MATCH
+        result.confidence = Confidence.HIGH
+        return
+    result.status = issues[0] if len(issues) == 1 else CheckStatus.MULTIPLE_ISSUES
+    result.confidence = Confidence.REVIEW

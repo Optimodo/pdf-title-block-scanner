@@ -2,7 +2,15 @@ from pathlib import Path
 
 from drawing_qa.checker import check_pdf, check_paths
 from drawing_qa.config_loader import load_config
-from drawing_qa.models import CheckStatus
+from drawing_qa.models import (
+    CheckStatus,
+    DocumentResult,
+    FilenameFields,
+    HistoryRow,
+    RevisionHistory,
+    TitleBlockFields,
+)
+from drawing_qa.validation import check_date_regression
 from tests.pdf_fixtures import write_bottom_right_pdf
 
 
@@ -70,8 +78,7 @@ def test_filename_suggestion_for_mismatch(tmp_path: Path, config_dir: Path):
     result = results[0]
     
     assert result.status == CheckStatus.MISMATCH
-    assert result.suggested_filename is not None
-    assert "ABC-WXY-ZZ-00-DR-A-0001" in result.suggested_filename
+    assert result.suggested_filename == "ABC-WXY-ZZ-00-DR-A-0001-P01.pdf"
 
 
 def test_dwg_pairing_exact_match(tmp_path: Path, config_dir: Path):
@@ -155,10 +162,59 @@ def test_duplicates_dont_override_serious_issues(tmp_path: Path, config_dir: Pat
     config = load_config(config_dir)
     results = check_paths([pdf1, pdf2], config)
     
-    # pdf1 should be DUPLICATE_REFERENCE
-    # pdf2 should be MISMATCH (more serious than duplicate)
+    # pdf1: duplicate only (filename matches its title block)
+    # pdf2: mismatch plus duplicate
     assert results[0].status == CheckStatus.DUPLICATE_REFERENCE
-    assert results[1].status == CheckStatus.MISMATCH
+    assert results[1].status == CheckStatus.MULTIPLE_ISSUES
+    assert CheckStatus.MISMATCH in results[1].issues
+    assert CheckStatus.DUPLICATE_REFERENCE in results[1].issues
     
-    # Both should have duplicate notes though
     assert all("Duplicate document reference" in " ".join(r.notes) for r in results)
+
+
+def _history_result(rows: list[HistoryRow], *, current_date: str | None = None) -> DocumentResult:
+    latest = max(rows, key=lambda row: row.revision or "")
+    return DocumentResult(
+        path=Path("sheet.pdf"),
+        filename=FilenameFields(raw_stem="sheet", parse_ok=True),
+        titleblock=TitleBlockFields(
+            document_reference="ABC-WXY-ZZ-00-DR-A-0001",
+            date=current_date,
+            history=RevisionHistory(rows=rows, latest=latest),
+        ),
+        status=CheckStatus.MATCH,
+    )
+
+
+def test_date_regression_uses_revision_rank_not_visual_order():
+    """Newest row at the top (upward-growing table) is not a regression."""
+    from drawing_qa.models import finalize_status
+
+    result = _history_result(
+        [
+            HistoryRow(revision="C03", date="11.05.2026"),
+            HistoryRow(revision="C02", date="01.04.2026"),
+            HistoryRow(revision="P01", date="15.01.2026"),
+        ],
+        current_date="11.05.2026",
+    )
+    check_date_regression([result])
+    finalize_status(result)
+    assert result.status == CheckStatus.MATCH
+    assert CheckStatus.DATE_REGRESSION not in result.issues
+    assert not any("Date regression" in note for note in result.notes)
+
+
+def test_date_regression_still_detected_when_later_rev_is_older_date():
+    from drawing_qa.models import finalize_status
+
+    result = _history_result(
+        [
+            HistoryRow(revision="P02", date="01.01.24"),
+            HistoryRow(revision="P01", date="15.06.24"),
+        ]
+    )
+    check_date_regression([result])
+    finalize_status(result)
+    assert CheckStatus.DATE_REGRESSION in result.issues
+    assert any("Date regression" in note for note in result.notes)

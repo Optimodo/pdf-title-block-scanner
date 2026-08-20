@@ -114,24 +114,22 @@ def check_dwg_pairing(
         Updated list of results with DWG pairing information
     """
     dwg_files = find_dwg_files(folder)
-    
-    if not dwg_files:
-        return results
-    
     for result in results:
+        result.dwg_files_present = bool(dwg_files)
+        if not dwg_files:
+            continue
         paired_dwg, has_mismatch = find_paired_dwg(result.path, dwg_files)
-        
         if paired_dwg:
             result.paired_dwg = paired_dwg
             result.dwg_mismatch = has_mismatch
-            
             if has_mismatch:
                 note = (
                     f"DWG file naming mismatch: PDF '{result.path.name}' "
                     f"paired with DWG '{paired_dwg.name}' (differs in separators/format)"
                 )
                 result.notes.append(note)
-    
+        else:
+            result.notes.append("No matching DWG in this folder")
     return results
 
 

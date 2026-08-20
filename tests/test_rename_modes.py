@@ -1,17 +1,81 @@
-"""Tests for different rename modes (doc ref only vs. full details)."""
+"""Tests for mismatch-only filename suggestions (preserve existing stem suffix)."""
 
 from pathlib import Path
 
-from drawing_qa.models import CheckStatus, DocumentResult, FilenameFields, TitleBlockFields
-from drawing_qa.validation import suggest_filename
+from drawing_qa.models import (
+    CheckStatus,
+    DocumentResult,
+    FieldComparison,
+    FilenameFields,
+    TitleBlockFields,
+)
+from drawing_qa.validation import standardize_filename, suggest_filename
 
 
-def test_suggest_filename_doc_ref_only():
-    """Default mode: only document reference in filename."""
-    pdf_path = Path("/tmp/ABC-XYZ-ZZ-00-DR-M-0001.pdf")
-    
+def _mismatch(
+    path: Path,
+    *,
+    filename_ref: str,
+    titleblock_ref: str,
+    title: str | None = "Floor Plan",
+    revision: str | None = "P01",
+) -> DocumentResult:
+    return DocumentResult(
+        path=path,
+        status=CheckStatus.MISMATCH,
+        titleblock=TitleBlockFields(
+            document_reference=titleblock_ref,
+            title=title,
+            revision=revision,
+        ),
+        filename=FilenameFields(
+            raw_stem=path.stem,
+            document_reference=filename_ref,
+            parse_ok=True,
+        ),
+        comparisons=[
+            FieldComparison(
+                "document_reference",
+                filename_ref,
+                titleblock_ref,
+                False,
+                "mismatch",
+            )
+        ],
+    )
+
+
+def test_suggest_filename_replaces_doc_ref_keeps_revision_suffix():
+    result = _mismatch(
+        Path("/tmp/ABC-XYZ-ZZ-00-DR-M-0001-P01.pdf"),
+        filename_ref="ABC-XYZ-ZZ-00-DR-M-0001",
+        titleblock_ref="ABC-XYZ-ZZ-00-DR-M-1234",
+    )
+    assert suggest_filename(result) == "ABC-XYZ-ZZ-00-DR-M-1234-P01.pdf"
+
+
+def test_suggest_filename_keeps_existing_title_and_revision():
+    result = _mismatch(
+        Path("/tmp/ABC-XYZ-ZZ-00-DR-M-0001_Ground Floor_C02.pdf"),
+        filename_ref="ABC-XYZ-ZZ-00-DR-M-0001",
+        titleblock_ref="ABC-XYZ-ZZ-00-DR-M-1234",
+    )
+    assert suggest_filename(result) == "ABC-XYZ-ZZ-00-DR-M-1234_Ground Floor_C02.pdf"
+
+
+def test_suggest_filename_handles_underscore_doc_ref():
+    result = _mismatch(
+        Path("/tmp/ABC_XYZ_ZZ_00_DR_M_0001_Floor Plan_P01.pdf"),
+        filename_ref="ABC-XYZ-ZZ-00-DR-M-0001",
+        titleblock_ref="ABC-XYZ-ZZ-00-DR-M-1234",
+    )
+    assert suggest_filename(result) == "ABC-XYZ-ZZ-00-DR-M-1234_Floor Plan_P01.pdf"
+
+
+def test_suggest_filename_not_offered_when_doc_ref_already_matches():
+    """Title/revision mismatches must not trigger a rename suggestion."""
     result = DocumentResult(
-        path=pdf_path,
+        path=Path("/tmp/ABC-XYZ-ZZ-00-DR-M-1234_Wrong Title_P01.pdf"),
         status=CheckStatus.MISMATCH,
         titleblock=TitleBlockFields(
             document_reference="ABC-XYZ-ZZ-00-DR-M-1234",
@@ -19,131 +83,118 @@ def test_suggest_filename_doc_ref_only():
             revision="P01",
         ),
         filename=FilenameFields(
-            raw_stem="ABC-XYZ-ZZ-00-DR-M-0001",
-            document_reference="ABC-XYZ-ZZ-00-DR-M-0001",
+            raw_stem="ABC-XYZ-ZZ-00-DR-M-1234_Wrong Title_P01",
+            document_reference="ABC-XYZ-ZZ-00-DR-M-1234",
+            title="Wrong Title",
+            revision="P01",
             parse_ok=True,
         ),
+        comparisons=[
+            FieldComparison(
+                "document_reference",
+                "ABC-XYZ-ZZ-00-DR-M-1234",
+                "ABC-XYZ-ZZ-00-DR-M-1234",
+                True,
+                "equal",
+            ),
+            FieldComparison(
+                "title",
+                "Wrong Title",
+                "Floor Plan",
+                False,
+                "mismatch",
+            ),
+        ],
     )
-    
-    # Default: only document reference
-    suggested = suggest_filename(result, include_title=False, include_revision=False)
-    assert suggested == "ABC-XYZ-ZZ-00-DR-M-1234.pdf"
-    assert "_Floor Plan" not in suggested
-    assert "P01" not in suggested
+    assert suggest_filename(result) is None
 
 
-def test_suggest_filename_with_title():
-    """Include title in suggested filename."""
-    pdf_path = Path("/tmp/ABC-XYZ-ZZ-00-DR-M-0001.pdf")
-    
+def test_suggest_filename_not_offered_for_match():
     result = DocumentResult(
-        path=pdf_path,
-        status=CheckStatus.MISMATCH,
+        path=Path("/tmp/ABC-XYZ-ZZ-00-DR-M-1234.pdf"),
+        status=CheckStatus.MATCH,
+        titleblock=TitleBlockFields(document_reference="ABC-XYZ-ZZ-00-DR-M-1234"),
+        filename=FilenameFields(
+            raw_stem="ABC-XYZ-ZZ-00-DR-M-1234",
+            document_reference="ABC-XYZ-ZZ-00-DR-M-1234",
+            parse_ok=True,
+        ),
+        comparisons=[
+            FieldComparison(
+                "document_reference",
+                "ABC-XYZ-ZZ-00-DR-M-1234",
+                "ABC-XYZ-ZZ-00-DR-M-1234",
+                True,
+                "equal",
+            )
+        ],
+    )
+    assert suggest_filename(result) is None
+
+
+def test_suggest_filename_does_not_strip_to_doc_ref_only():
+    result = _mismatch(
+        Path("/tmp/ABC-XYZ-ZZ-00-DR-M-0001 - Site Plan.pdf"),
+        filename_ref="ABC-XYZ-ZZ-00-DR-M-0001",
+        titleblock_ref="ABC-XYZ-ZZ-00-DR-M-1234",
+    )
+    suggested = suggest_filename(result)
+    assert suggested == "ABC-XYZ-ZZ-00-DR-M-1234 - Site Plan.pdf"
+    assert suggested != "ABC-XYZ-ZZ-00-DR-M-1234.pdf"
+
+
+def test_standardize_filename_includes_title_and_revision():
+    result = DocumentResult(
+        path=Path("/tmp/ABC-XYZ-ZZ-00-DR-M-1234.pdf"),
+        status=CheckStatus.MATCH,
         titleblock=TitleBlockFields(
             document_reference="ABC-XYZ-ZZ-00-DR-M-1234",
             title="Floor Plan",
             revision="P01",
         ),
         filename=FilenameFields(
-            raw_stem="ABC-XYZ-ZZ-00-DR-M-0001",
-            document_reference="ABC-XYZ-ZZ-00-DR-M-0001",
+            raw_stem="ABC-XYZ-ZZ-00-DR-M-1234",
+            document_reference="ABC-XYZ-ZZ-00-DR-M-1234",
             parse_ok=True,
         ),
     )
-    
-    suggested = suggest_filename(result, include_title=True, include_revision=False)
-    assert suggested == "ABC-XYZ-ZZ-00-DR-M-1234_Floor Plan.pdf"
+
+    assert standardize_filename(result) == "ABC-XYZ-ZZ-00-DR-M-1234_Floor Plan_P01.pdf"
 
 
-def test_suggest_filename_with_revision():
-    """Include revision in suggested filename."""
-    pdf_path = Path("/tmp/ABC-XYZ-ZZ-00-DR-M-0001.pdf")
-    
+def test_standardize_filename_sanitizes_illegal_title_chars():
     result = DocumentResult(
-        path=pdf_path,
-        status=CheckStatus.MISMATCH,
+        path=Path("/tmp/ABC-XYZ-ZZ-00-DR-M-1234.pdf"),
+        status=CheckStatus.MATCH,
         titleblock=TitleBlockFields(
             document_reference="ABC-XYZ-ZZ-00-DR-M-1234",
-            title="Floor Plan",
-            revision="P01",
+            title='Level 1 / "GA"',
+            revision="C02",
         ),
         filename=FilenameFields(
-            raw_stem="ABC-XYZ-ZZ-00-DR-M-0001",
-            document_reference="ABC-XYZ-ZZ-00-DR-M-0001",
-            parse_ok=True,
-        ),
-    )
-    
-    suggested = suggest_filename(result, include_title=False, include_revision=True)
-    assert suggested == "ABC-XYZ-ZZ-00-DR-M-1234-P01.pdf"
-
-
-def test_suggest_filename_full_details():
-    """Full mode: document reference, title, and revision."""
-    pdf_path = Path("/tmp/ABC-XYZ-ZZ-00-DR-M-0001.pdf")
-    
-    result = DocumentResult(
-        path=pdf_path,
-        status=CheckStatus.MISMATCH,
-        titleblock=TitleBlockFields(
+            raw_stem="ABC-XYZ-ZZ-00-DR-M-1234",
             document_reference="ABC-XYZ-ZZ-00-DR-M-1234",
-            title="Floor Plan",
-            revision="P01",
-        ),
-        filename=FilenameFields(
-            raw_stem="ABC-XYZ-ZZ-00-DR-M-0001",
-            document_reference="ABC-XYZ-ZZ-00-DR-M-0001",
             parse_ok=True,
         ),
     )
-    
-    suggested = suggest_filename(result, include_title=True, include_revision=True)
-    assert suggested == "ABC-XYZ-ZZ-00-DR-M-1234_Floor Plan_P01.pdf"
+
+    assert standardize_filename(result) == "ABC-XYZ-ZZ-00-DR-M-1234_Level 1 - GA_C02.pdf"
 
 
-def test_suggest_filename_no_title_available():
-    """Handle case where title is missing."""
-    pdf_path = Path("/tmp/ABC-XYZ-ZZ-00-DR-M-0001.pdf")
-    
+def test_standardize_filename_omits_missing_title():
     result = DocumentResult(
-        path=pdf_path,
-        status=CheckStatus.MISMATCH,
+        path=Path("/tmp/ABC-XYZ-ZZ-00-DR-M-1234.pdf"),
+        status=CheckStatus.INCOMPLETE,
         titleblock=TitleBlockFields(
             document_reference="ABC-XYZ-ZZ-00-DR-M-1234",
             title=None,
             revision="P01",
         ),
         filename=FilenameFields(
-            raw_stem="ABC-XYZ-ZZ-00-DR-M-0001",
-            document_reference="ABC-XYZ-ZZ-00-DR-M-0001",
-            parse_ok=True,
-        ),
-    )
-    
-    # Even with include_title=True, should not fail if title is None
-    suggested = suggest_filename(result, include_title=True, include_revision=True)
-    assert suggested == "ABC-XYZ-ZZ-00-DR-M-1234-P01.pdf"
-
-
-def test_suggest_filename_no_revision_available():
-    """Handle case where revision is missing."""
-    pdf_path = Path("/tmp/ABC-XYZ-ZZ-00-DR-M-0001.pdf")
-    
-    result = DocumentResult(
-        path=pdf_path,
-        status=CheckStatus.MISMATCH,
-        titleblock=TitleBlockFields(
+            raw_stem="ABC-XYZ-ZZ-00-DR-M-1234",
             document_reference="ABC-XYZ-ZZ-00-DR-M-1234",
-            title="Floor Plan",
-            revision=None,
-        ),
-        filename=FilenameFields(
-            raw_stem="ABC-XYZ-ZZ-00-DR-M-0001",
-            document_reference="ABC-XYZ-ZZ-00-DR-M-0001",
             parse_ok=True,
         ),
     )
-    
-    # Even with include_revision=True, should not fail if revision is None
-    suggested = suggest_filename(result, include_title=True, include_revision=True)
-    assert suggested == "ABC-XYZ-ZZ-00-DR-M-1234_Floor Plan.pdf"
+
+    assert standardize_filename(result) == "ABC-XYZ-ZZ-00-DR-M-1234_P01.pdf"

@@ -2,7 +2,16 @@
 
 from __future__ import annotations
 
+import re
+
 from spellchecker import SpellChecker
+
+# Alphanumeric drawing codes (B1M, L00, M1, 00A) are not English words.
+_CODE_LIKE = re.compile(r"^(?:[A-Za-z]{1,3}\d+[A-Za-z0-9]*|\d+[A-Za-z]{1,3})$")
+# Token immediately after Level / Lvl is a storey code (LG, GF, B1M, 03-13).
+_LEVEL_FOLLOWER = re.compile(
+    r"(?i)\b(?:levels?|lvl)\s+([A-Za-z0-9]+(?:\s*-\s*[A-Za-z0-9]+)?)"
+)
 
 
 def get_mep_construction_terms() -> set[str]:
@@ -418,6 +427,35 @@ def get_mep_construction_terms() -> set[str]:
     }
 
 
+def _level_code_tokens(text: str) -> set[str]:
+    """Tokens that follow 'Level' / 'Lvl' and should not be spell-checked."""
+    found: set[str] = set()
+    for match in _LEVEL_FOLLOWER.finditer(text):
+        token = match.group(1).lower()
+        found.add(token)
+        found.add("".join(c for c in token if c.isalpha()))
+        for part in re.split(r"[\s\-]+", token):
+            if part:
+                found.add(part)
+                found.add("".join(c for c in part if c.isalpha()))
+    found.discard("")
+    return found
+
+
+def _should_skip_token(raw: str, level_codes: set[str]) -> bool:
+    token = raw.strip(".,;:()[]{}'\"")
+    if not token:
+        return True
+    lowered = token.lower()
+    if lowered in level_codes:
+        return True
+    if any(ch.isdigit() for ch in token):
+        return True
+    if _CODE_LIKE.fullmatch(token):
+        return True
+    return False
+
+
 def check_spelling(
     text: str | None,
     custom_terms: set[str] | None = None,
@@ -443,7 +481,10 @@ def check_spelling(
     # pyspellchecker uses 'en' for English, not 'en_GB' or 'en_US'
     # We'll use 'en' and add UK-specific spellings to custom dictionary
     lang_code = "en" if language.startswith("en") else language
-    spell = SpellChecker(language=lang_code)
+    try:
+        spell = SpellChecker(language=lang_code)
+    except (ValueError, FileNotFoundError, OSError):
+        return [], []
 
     # Add MEP/construction terms to dictionary
     default_terms = get_mep_construction_terms()
@@ -465,15 +506,28 @@ def check_spelling(
 
     # Extract words and check spelling
     # Split on spaces, hyphens, and common separators
-    words = text.lower().replace("-", " ").replace("/", " ").split()
+    level_codes = _level_code_tokens(text)
+    words = (
+        text.lower()
+        .replace("/", " ")
+        .replace("&", " ")
+        .replace("+", " ")
+        .split()
+    )
 
-    # Filter out common patterns that aren't real words
+    # Filter out codes, mixed alphanumerics, and tokens after "Level"
     words_to_check = []
     for word in words:
-        # Remove punctuation and check if it's a word
-        clean_word = "".join(c for c in word if c.isalpha())
-        if clean_word and len(clean_word) > 1:  # Ignore single letters
-            words_to_check.append(clean_word)
+        raw = word.replace("-", "")
+        if _should_skip_token(word, level_codes) or _should_skip_token(raw, level_codes):
+            continue
+        pieces = word.replace("-", " ").split()
+        for piece in pieces:
+            if _should_skip_token(piece, level_codes):
+                continue
+            clean_word = "".join(c for c in piece if c.isalpha())
+            if clean_word and len(clean_word) > 1:
+                words_to_check.append(clean_word)
 
     # Find misspelled words
     misspelled = spell.unknown(words_to_check)

@@ -120,6 +120,11 @@ def find_label(
         for i in range(n - t + 1):
             if normalized[i : i + t] != target:
                 continue
+            if t == 1 and i > 0:
+                # Do not treat the tail of "Contract Number" / "Project Number" as NUMBER.
+                prev = normalized[i - 1]
+                if prev in {"PROJECT", "CONTRACT", "COMPUTER", "FILE", "DRAWING"}:
+                    continue
             found = line[i : i + t]
             if exclude and all(exclude.contains_point(w.cx, w.cy) for w in found):
                 continue
@@ -141,24 +146,29 @@ COMMON_STOP_LABELS = [
     "PROJECT NUMBER",
     "COMPUTER FILE",
     "FILE NO",
+    "CONTRACT NUMBER",
+    "PROJECT NAME",
+    "PROJECT MANAGER",
+    "CLIENT",
+    "CLIENT CONTACT",
 ]
 
 
 def _same_line_right(words: list[Word], label_words: list[Word]) -> list[Word]:
     left = min(w.x0 for w in label_words)
-    right_edge = max(w.x1 for w in label_words)
     y0 = min(w.y0 for w in label_words)
     y1 = max(w.y1 for w in label_words)
     band_mid = (y0 + y1) / 2
     height = max(y1 - y0, 1.0)
     # CAD cells often drop the value a few points below the label, or overlap it.
     vtol = max(height * 2.0, 16.0)
-    label_cx = (left + right_edge) / 2
     chosen: list[Word] = []
     for word in words:
         if word in label_words:
             continue
-        if word.cx <= label_cx:
+        # Include values that start under/beside the label, not only those
+        # whose centre is to the right of the label centre ("Block" in "Block I").
+        if word.x1 < left - 2:
             continue
         if abs(word.cy - band_mid) <= vtol:
             chosen.append(word)
@@ -175,7 +185,7 @@ def _below(words: list[Word], label_words: list[Word]) -> list[Word]:
     x1 = max(w.x1 for w in label_words)
     y1 = max(w.y1 for w in label_words)
     width = max(x1 - x0, 1.0)
-    band_left = x0 - width * 0.25
+    band_left = x0 - max(width * 2.5, 160.0)
     # Titles often span most of the title-block width, far beyond the label.
     band_right = x1 + max(width * 2.5, 400.0)
     chosen: list[Word] = []
