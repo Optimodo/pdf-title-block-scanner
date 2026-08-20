@@ -87,6 +87,121 @@ def _print_summary(results) -> None:
         print(f"  {status}: {count}")
 
 
+def _print_mismatch_summary(results) -> list:
+    """Print summary of mismatches and return list of renameable items."""
+    from drawing_qa.models import CheckStatus
+    
+    mismatches = [
+        r for r in results
+        if r.status == CheckStatus.MISMATCH and r.suggested_filename
+    ]
+    
+    if not mismatches:
+        return []
+    
+    print()
+    print("=" * 80)
+    print(f"Found {len(mismatches)} file(s) with document reference mismatches:")
+    print("=" * 80)
+    print()
+    
+    for i, result in enumerate(mismatches, 1):
+        print(f"{i}. {result.path.name}")
+        print(f"   Filename doc ref: {result.filename.document_reference or '(none)'}")
+        print(f"   Title block doc ref: {result.titleblock.document_reference}")
+        if result.suggested_filename:
+            print(f"   Suggested: {result.suggested_filename}")
+        if result.paired_dwg:
+            status = " (naming mismatch)" if result.dwg_mismatch else ""
+            print(f"   Paired DWG: {result.paired_dwg.name}{status}")
+        print()
+    
+    return mismatches
+
+
+def _offer_rename(mismatches: list) -> bool:
+    """Offer to rename mismatched files interactively.
+    
+    Returns True if user wants to rename, False otherwise.
+    """
+    if not mismatches:
+        return False
+    
+    print("=" * 80)
+    print("Would you like to rename these files to match their title blocks?")
+    print("This will rename PDFs (and paired DWG files) to the suggested names.")
+    print("=" * 80)
+    
+    while True:
+        response = input("Rename files? (yes/no/preview): ").strip().lower()
+        if response in ("y", "yes"):
+            return True
+        if response in ("n", "no"):
+            return False
+        if response in ("p", "preview"):
+            _preview_renames(mismatches)
+            continue
+        print("Please answer 'yes', 'no', or 'preview'")
+
+
+def _preview_renames(mismatches: list) -> None:
+    """Show what would be renamed without actually renaming."""
+    print()
+    print("Preview of changes:")
+    print("-" * 80)
+    for result in mismatches:
+        print(f"PDF: {result.path.name} → {result.suggested_filename}")
+        if result.paired_dwg and result.suggested_filename:
+            # Suggest DWG name based on PDF suggestion
+            dwg_suggestion = Path(result.suggested_filename).stem + ".dwg"
+            print(f"DWG: {result.paired_dwg.name} → {dwg_suggestion}")
+        print()
+
+
+def _perform_renames(mismatches: list) -> tuple[int, int]:
+    """Perform the actual file renames.
+    
+    Returns tuple of (success_count, error_count).
+    """
+    success_count = 0
+    error_count = 0
+    
+    for result in mismatches:
+        if not result.suggested_filename:
+            continue
+        
+        new_pdf_path = result.path.parent / result.suggested_filename
+        
+        # Check if target already exists
+        if new_pdf_path.exists():
+            print(f"⚠️  Cannot rename {result.path.name}: {result.suggested_filename} already exists")
+            error_count += 1
+            continue
+        
+        try:
+            # Rename PDF
+            result.path.rename(new_pdf_path)
+            print(f"✓ Renamed: {result.path.name} → {result.suggested_filename}")
+            success_count += 1
+            
+            # Rename paired DWG if exists
+            if result.paired_dwg and result.paired_dwg.exists():
+                dwg_suggestion = Path(result.suggested_filename).stem + result.paired_dwg.suffix
+                new_dwg_path = result.paired_dwg.parent / dwg_suggestion
+                
+                if new_dwg_path.exists():
+                    print(f"  ⚠️  DWG already exists: {dwg_suggestion}")
+                else:
+                    result.paired_dwg.rename(new_dwg_path)
+                    print(f"  ✓ Renamed DWG: {result.paired_dwg.name} → {dwg_suggestion}")
+        
+        except Exception as e:
+            print(f"✗ Error renaming {result.path.name}: {e}")
+            error_count += 1
+    
+    return success_count, error_count
+
+
 def run_folder_check(
     folder: Path,
     *,
@@ -131,6 +246,19 @@ def run_folder_check(
     saved = write_report(results, report_path)
     _print_summary(results)
     print(f"Report: {saved}")
+    
+    # Offer to rename mismatched files if running interactively
+    if progress:  # progress=True means interactive mode
+        mismatches = _print_mismatch_summary(results)
+        if mismatches and _offer_rename(mismatches):
+            print()
+            print("Renaming files...")
+            success, errors = _perform_renames(mismatches)
+            print()
+            print(f"Renamed {success} file(s) successfully")
+            if errors:
+                print(f"Failed to rename {errors} file(s)")
+    
     problems = sum(1 for item in results if item.status.value != "MATCH")
     return 1 if problems else 0
 
