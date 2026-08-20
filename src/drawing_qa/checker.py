@@ -59,7 +59,7 @@ def check_pdf(path: Path, config: AppConfig) -> DocumentResult:
         result.error = str(exc)
         result.filename = filename
         return result
-    return build_result(result, config.compare_rules)
+    return build_result(result, config.compare_rules, config.spell_check)
 
 
 def check_paths(paths: list[Path], config: AppConfig) -> list[DocumentResult]:

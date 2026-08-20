@@ -14,3 +14,9 @@ compare:
     title: if_both_present
     suitability: if_both_present
     date: if_both_present
+
+spell_check:
+  enabled: true
+  language: en_GB  # en_GB for UK English, en_US for US English
+  check_title: true
+  fail_on_error: true  # Set to false to warn only (add note but don't fail status)

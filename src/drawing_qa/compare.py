@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 
+from drawing_qa.config_loader import SpellCheckConfig
 from drawing_qa.models import (
     CheckStatus,
     Confidence,
@@ -10,6 +11,7 @@ from drawing_qa.models import (
     FilenameFields,
     TitleBlockFields,
 )
+from drawing_qa.spellcheck import check_spelling, format_spelling_note
 from drawing_qa.tokens import dates_equal, suitability_code
 
 
@@ -221,7 +223,11 @@ def compare_document(
     return comparisons, history_comps, CheckStatus.MATCH, notes
 
 
-def build_result(result: DocumentResult, rules: dict[str, str]) -> DocumentResult:
+def build_result(
+    result: DocumentResult,
+    rules: dict[str, str],
+    spell_check_config: SpellCheckConfig | None = None,
+) -> DocumentResult:
     comparisons, history_comps, status, notes = compare_document(
         result.filename, result.titleblock, rules
     )
@@ -232,4 +238,26 @@ def build_result(result: DocumentResult, rules: dict[str, str]) -> DocumentResul
     result.notes = list(
         dict.fromkeys(result.notes + notes + result.filename.notes + result.titleblock.notes)
     )
+
+    # Run spell checking if enabled
+    if spell_check_config and spell_check_config.enabled and spell_check_config.check_title:
+        title_to_check = result.titleblock.title
+        if title_to_check:
+            misspelled, suggestions = check_spelling(
+                title_to_check,
+                language=spell_check_config.language,
+            )
+            if misspelled:
+                result.spelling_errors = misspelled
+                spell_note = format_spelling_note(misspelled, suggestions)
+                result.notes.append(spell_note)
+
+                # Update status if configured to fail on spelling errors
+                if spell_check_config.fail_on_error:
+                    # Only override if current status is MATCH or FILENAME_PARSE_ERROR
+                    # Don't override more serious issues like MISMATCH
+                    if result.status in (CheckStatus.MATCH, CheckStatus.FILENAME_PARSE_ERROR):
+                        result.status = CheckStatus.SPELLING_ERROR
+                        result.confidence = Confidence.REVIEW
+
     return result

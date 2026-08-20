@@ -1,21 +1,22 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 
 
-class CheckStatus(str, Enum):
+class CheckStatus(StrEnum):
     MATCH = "MATCH"
     MISMATCH = "MISMATCH"
     HISTORY_MISMATCH = "HISTORY_MISMATCH"
     INCOMPLETE = "INCOMPLETE"
     UNDETECTED = "UNDETECTED"
+    SPELLING_ERROR = "SPELLING_ERROR"
     FILENAME_PARSE_ERROR = "FILENAME_PARSE_ERROR"
     ERROR = "ERROR"
 
 
-class Confidence(str, Enum):
+class Confidence(StrEnum):
     HIGH = "HIGH"
     REVIEW = "REVIEW"
 
@@ -222,3 +223,4 @@ class DocumentResult:
     page_count: int = 0
     error: str | None = None
     preview_png: bytes | None = None
+    spelling_errors: list[str] = field(default_factory=list)
