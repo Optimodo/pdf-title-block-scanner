@@ -110,7 +110,7 @@ Each data row is medium height and includes a **preview strip**: five tight crop
 | Status | Meaning |
 | --- | --- |
 | `MATCH` | Filename agrees with the current title block; latest history row matches current |
-| `MISMATCH` | Filename disagrees with the current title-block values |
+| `MISMATCH` | Filename disagrees with the current title-block values; column A names the field (`MISMATCH: TITLE`) |
 | `HISTORY_MISMATCH` | Current title block disagrees with the latest revision-history row |
 | `INCOMPLETE` | Layout found, but a required field was missing |
 | `UNDETECTED` | No configured layout scored high enough |

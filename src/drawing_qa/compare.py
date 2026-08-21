@@ -15,6 +15,7 @@ from drawing_qa.models import (
 )
 from drawing_qa.spellcheck import check_spelling, format_spelling_note
 from drawing_qa.suitability import suitability_is_allowed, suitability_whitelist_note
+from drawing_qa.timing import span as timing_span
 from drawing_qa.tokens import dates_equal, suitability_code
 
 
@@ -201,9 +202,17 @@ def compare_document(
             elif item.matched is False:
                 mismatch = True
                 required_fail = True
+                notes.append(
+                    f"{field_name.replace('_', ' ')} mismatch: "
+                    f"filename {item.filename_value!r} != title block {item.titleblock_value!r}"
+                )
         elif rule in {"if_both_present", "optional"}:
             if item.matched is False:
                 mismatch = True
+                notes.append(
+                    f"{field_name.replace('_', ' ')} mismatch: "
+                    f"filename {item.filename_value!r} != title block {item.titleblock_value!r}"
+                )
 
     history_comps, history_mismatch, history_notes = compare_history(titleblock)
     notes.extend(history_notes)
@@ -249,14 +258,15 @@ def build_result(
     if spell_check_config and spell_check_config.enabled and spell_check_config.check_title:
         title_to_check = result.titleblock.title
         if title_to_check:
-            try:
-                misspelled, suggestions = check_spelling(
-                    title_to_check,
-                    language=spell_check_config.language,
-                )
-            except Exception as exc:  # noqa: BLE001 - never abort a folder scan for spellcheck
-                result.notes.append(f"Spell check skipped: {exc}")
-                misspelled, suggestions = [], []
+            with timing_span("spellcheck"):
+                try:
+                    misspelled, suggestions = check_spelling(
+                        title_to_check,
+                        language=spell_check_config.language,
+                    )
+                except Exception as exc:  # noqa: BLE001 - never abort a folder scan for spellcheck
+                    result.notes.append(f"Spell check skipped: {exc}")
+                    misspelled, suggestions = [], []
             if misspelled:
                 result.spelling_errors = misspelled
                 spell_note = format_spelling_note(misspelled, suggestions)

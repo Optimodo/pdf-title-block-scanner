@@ -2,7 +2,12 @@ from pathlib import Path
 
 import pymupdf
 
-from drawing_qa.extract import extract_near_label_words, extract_words, take_until_label
+from drawing_qa.extract import (
+    clear_page_word_cache,
+    extract_near_label_words,
+    extract_words,
+    take_until_label,
+)
 from drawing_qa.models import Word
 from tests.pdf_fixtures import write_rotated_number_pdf
 
@@ -30,9 +35,34 @@ def test_extract_words_maps_rotated_page_to_visual_space(tmp_path: Path):
     width, height = page.rect.width, page.rect.height
     words = extract_words(page)
     doc.close()
+    clear_page_word_cache()
     number = next(word for word in words if word.text == "Number")
     assert number.x0 > width * 0.7
     assert number.y0 > height * 0.7
+
+
+def test_extract_words_caches_full_page_get_text(tmp_path: Path, monkeypatch):
+    pdf = write_rotated_number_pdf(tmp_path / "cache.pdf")
+    doc = pymupdf.open(pdf)
+    page = doc[0]
+    clear_page_word_cache()
+    calls = {"n": 0}
+    original = page.get_text
+
+    def counting_get_text(*args, **kwargs):
+        calls["n"] += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(page, "get_text", counting_get_text)
+    first = extract_words(page)
+    second = extract_words(page)
+    assert calls["n"] == 1
+    assert [w.text for w in first] == [w.text for w in second]
+    clear_page_word_cache(page)
+    extract_words(page)
+    assert calls["n"] == 2
+    doc.close()
+    clear_page_word_cache()
 
 
 def test_take_until_label_keeps_all_when_no_heading():
@@ -102,3 +132,30 @@ def test_title_includes_word_starting_under_the_label():
     assert found is not None
     assert found[0].startswith("Block I")
     assert "03-13" in found[0]
+
+
+def test_title_ignores_drawing_notes_left_of_title_heading():
+    """Sheet notes left of TITLE (grid '2-04', sizes) must not join the title."""
+    words = [
+        Word(x0=3048, y0=1903, x1=3061, y1=1912, text="Title"),
+        Word(x0=2879, y0=1932, x1=2908, y1=1954, text="2-04"),
+        Word(x0=2964, y0=1973, x1=2976, y1=1985, text="700"),
+        Word(x0=3076, y0=1931, x1=3098, y1=1959, text="B2"),
+        Word(x0=3103, y0=1931, x1=3109, y1=1959, text="-"),
+        Word(x0=3114, y0=1931, x1=3196, y1=1959, text="Combined"),
+        Word(x0=3201, y0=1931, x1=3292, y1=1959, text="Mechanical"),
+        Word(x0=3058, y0=1954, x1=3112, y1=1981, text="Layout"),
+        Word(x0=3117, y0=1954, x1=3123, y1=1981, text="-"),
+        Word(x0=3128, y0=1954, x1=3211, y1=1981, text="Apartment"),
+        Word(x0=3216, y0=1954, x1=3256, y1=1981, text="Type"),
+        Word(x0=3261, y0=1954, x1=3311, y1=1981, text="B2-2B"),
+        Word(x0=2906, y0=2030, x1=2923, y1=2042, text="1130"),
+    ]
+    found = extract_near_label_words(
+        words, ["TITLE"], "below", stop_labels=["NUMBER", "REVISION"]
+    )
+    assert found is not None
+    assert found[0] == "B2 - Combined Mechanical Layout - Apartment Type B2-2B"
+    assert "2-04" not in found[0]
+    assert "700" not in found[0]
+    assert "1130" not in found[0]

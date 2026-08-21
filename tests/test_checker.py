@@ -155,7 +155,29 @@ def test_history_latest_used_not_older_rows(tmp_path: Path, config_dir: Path):
     assert result.titleblock.history.latest.revision == "P03"
     assert result.status == CheckStatus.MATCH
     assert result.confidence == Confidence.HIGH
-    assert result.preview_png
+    assert result.preview_png  # preview.all_files is on for speed comparison
+
+
+def test_history_match_can_skip_preview_when_mismatch_only(tmp_path: Path, config_dir: Path):
+    pdf = write_bottom_right_pdf(
+        tmp_path / "ABC-WXY-ZZ-00-DR-A-0001-P03.pdf",
+        document_reference="ABC-WXY-ZZ-00-DR-A-0001",
+        title="Ground Floor GA",
+        revision="P03",
+        date="15.06.24",
+        suitability="S4",
+        history=[
+            ("P01", "12.01.24", "First issue"),
+            ("P02", "03.03.24", "Updated for comment"),
+            ("P03", "15.06.24", "S4 Construction"),
+        ],
+    )
+    config = load_config(config_dir)
+    assert config.preview is not None
+    config.preview.all_files = False
+    result = check_pdf(pdf, config)
+    assert result.status == CheckStatus.MATCH
+    assert result.preview_png is None
 
 
 def test_history_mismatch_against_current_rev(tmp_path: Path, config_dir: Path):
@@ -177,6 +199,7 @@ def test_history_mismatch_against_current_rev(tmp_path: Path, config_dir: Path):
     assert result.titleblock.history.latest.revision == "P02"
     assert result.status == CheckStatus.HISTORY_MISMATCH
     assert result.confidence == Confidence.REVIEW
+    assert result.preview_png  # mismatch rows get a preview
 
 
 def test_detects_mbs_right_title_block(tmp_path: Path, config_dir: Path):

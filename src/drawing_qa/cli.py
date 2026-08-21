@@ -4,7 +4,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from drawing_qa.checker import check_pdf, check_paths, iter_pdfs
+from drawing_qa.checker import check_paths, iter_pdfs
 from drawing_qa.config_loader import load_config
 from drawing_qa.detect import crop_region_pixmap, region_debug_text
 from drawing_qa.extract import require_pymupdf
@@ -17,6 +17,7 @@ from drawing_qa.paths import (
 )
 from drawing_qa.rename import RenameStats, apply_renames
 from drawing_qa.report import write_report
+from drawing_qa.timing import format_report as format_timing_report, is_enabled as timing_enabled
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -222,19 +223,17 @@ def run_folder_check(
 
     print(f"Found {len(pdfs)} PDF(s)")
     print()
-    
-    # Check all PDFs first
-    initial_results = []
-    for index, path in enumerate(pdfs, start=1):
+
+    def on_pdf(index: int, total: int, result) -> None:
         if progress:
-            print(f"[{index}/{len(pdfs)}] {path.name} ...", flush=True)
-        result = check_pdf(path, config)
-        initial_results.append(result)
-        if progress:
+            print(f"[{index}/{total}] {result.path.name} ...", flush=True)
             print(f"         {result.status.value}")
-    print()
-    
-    results = check_paths(pdfs, config, standardize=standardize_names)
+
+    results = check_paths(
+        pdfs, config, standardize=standardize_names, on_pdf=on_pdf
+    )
+    if progress:
+        print()
 
     if standardize_names:
         print("Renaming files to document-reference_title_revision...")
@@ -256,6 +255,9 @@ def run_folder_check(
     saved = write_report(results, report_path)
     _print_summary(results)
     print(f"Report: {saved}")
+    if timing_enabled():
+        print()
+        print(format_timing_report())
     
     problems = sum(1 for item in results if item.status.value != "MATCH")
     return 1 if problems else 0
@@ -276,6 +278,9 @@ def cmd_check(args: argparse.Namespace) -> int:
         saved = write_report(results, output)
         _print_summary(results)
         print(f"Report: {saved}")
+        if timing_enabled():
+            print()
+            print(format_timing_report())
         problems = sum(1 for item in results if item.status.value != "MATCH")
         return 1 if problems else 0
     return run_folder_check(

@@ -8,6 +8,7 @@ import yaml
 
 from drawing_qa.models import FieldSpec, HistorySpec, RectFrac, TitleBlockLayout
 from drawing_qa.paths import bundled_config_dir, resolve_config_dir
+from drawing_qa.timing import configure as configure_timing
 
 
 @dataclass
@@ -27,6 +28,11 @@ class SuitabilityCheckConfig:
 
 
 @dataclass
+class PreviewConfig:
+    all_files: bool = False
+
+
+@dataclass
 class AppConfig:
     field_count: int
     revision_pattern: str
@@ -36,6 +42,7 @@ class AppConfig:
     layouts: list[TitleBlockLayout]
     spell_check: SpellCheckConfig | None = None
     suitability_check: SuitabilityCheckConfig | None = None
+    preview: PreviewConfig | None = None
 
 
 def _rect(data: dict) -> RectFrac:
@@ -148,6 +155,14 @@ def load_config(config_dir: Path | None = None) -> AppConfig:
         values=[str(item).strip() for item in values if str(item).strip()],
     )
 
+    timing_cfg = settings.get("timing") or {}
+    configure_timing(bool(timing_cfg.get("enabled", False)))
+
+    preview_cfg = settings.get("preview") or {}
+    preview = PreviewConfig(
+        all_files=bool(preview_cfg.get("all_files", False)),
+    )
+
     return AppConfig(
         field_count=int(filename_cfg.get("field_count", 7)),
         revision_pattern=str(
@@ -159,6 +174,7 @@ def load_config(config_dir: Path | None = None) -> AppConfig:
         layouts=layouts,
         spell_check=spell_check,
         suitability_check=suitability_check,
+        preview=preview,
     )
 
 

@@ -35,7 +35,7 @@ def _font(size: int):
         return ImageFont.load_default()
 
 
-def _crop_field(page, field: ExtractedField, zoom: float = 3.0) -> Image.Image | None:
+def _crop_field(page, field: ExtractedField, zoom: float = 2.0) -> Image.Image | None:
     if Image is None or not field.bbox:
         return None
     require_pymupdf()

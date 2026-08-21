@@ -22,3 +22,13 @@ spell_check:
   fail_on_error: true  # Set to false to warn only (add note but don't fail status)
 
 # Purpose-of-issue / suitability whitelist: see suitability.yaml in this folder.
+
+# Temporary scan timings printed at the end of a run. Set false (or TBCHECK_TIMING=0)
+# once optimisation is done — this module is designed to be removed later.
+timing:
+  enabled: true
+
+preview:
+  # true = crop for every PDF (use this when comparing report/Excel speed).
+  # false = only non-MATCH rows (faster on large folders).
+  all_files: false

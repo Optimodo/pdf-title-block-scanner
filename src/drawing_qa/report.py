@@ -13,6 +13,7 @@ from openpyxl.worksheet.worksheet import Worksheet
 
 from drawing_qa.models import CheckStatus, Confidence, DocumentResult
 from drawing_qa.preview import preview_size
+from drawing_qa.timing import span as timing_span
 
 STATUS_FILL = {
     CheckStatus.MATCH: PatternFill("solid", fgColor="C6EFCE"),
@@ -208,7 +209,8 @@ def _write_rows(ws: Worksheet, results: list[DocumentResult], keep: list) -> Non
             cell.alignment = WRAP
             cell.font = BODY_FONT
         if result.preview_png:
-            _add_preview(ws, row_idx, result.preview_png, keep)
+            with timing_span("report_embed_previews"):
+                _add_preview(ws, row_idx, result.preview_png, keep)
         rename_fill = _rename_fill(result)
         if rename_fill:
             ws.cell(row_idx, RENAME_RESULT_COL).fill = rename_fill
@@ -257,7 +259,7 @@ def _write_summary(ws: Worksheet, results: list[DocumentResult]) -> None:
         ws[f"{col}10"].fill = HEADER_FILL
     meanings = {
         CheckStatus.MATCH: "Filename and current title-block values agree; history latest matches current",
-        CheckStatus.MISMATCH: "Filename disagrees with the current title-block values",
+        CheckStatus.MISMATCH: "Filename disagrees with the current title-block values (column A names the field)",
         CheckStatus.HISTORY_MISMATCH: "Current title block disagrees with the latest revision-history row",
         CheckStatus.INCOMPLETE: "Layout found, but the document reference could not be read from the title block",
         CheckStatus.UNDETECTED: "No configured layout scored high enough",
@@ -329,21 +331,23 @@ def write_report(results: list[DocumentResult], output: Path) -> Path:
     keep: list = []
     wb._preview_images = keep  # prevent GC of BytesIO-backed images
 
-    summary = wb.active
-    summary.title = "Summary"
-    _write_summary(summary, results)
+    with timing_span("report_build"):
+        summary = wb.active
+        summary.title = "Summary"
+        _write_summary(summary, results)
 
-    review = [
-        item for item in results if item.confidence == Confidence.REVIEW
-    ]
-    high = [item for item in results if item.confidence == Confidence.HIGH]
+        review = [
+            item for item in results if item.confidence == Confidence.REVIEW
+        ]
+        high = [item for item in results if item.confidence == Confidence.HIGH]
 
-    review_sheet = wb.create_sheet("Review needed")
-    _write_rows(review_sheet, review, keep)
-    high_sheet = wb.create_sheet("High confidence")
-    _write_rows(high_sheet, high, keep)
-    all_sheet = wb.create_sheet("All documents")
-    _write_rows(all_sheet, results, keep)
+        review_sheet = wb.create_sheet("Review needed")
+        _write_rows(review_sheet, review, keep)
+        high_sheet = wb.create_sheet("High confidence")
+        _write_rows(high_sheet, high, keep)
+        all_sheet = wb.create_sheet("All documents")
+        _write_rows(all_sheet, results, keep)
 
-    wb.save(output)
+    with timing_span("report_save"):
+        wb.save(output)
     return output

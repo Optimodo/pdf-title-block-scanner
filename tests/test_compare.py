@@ -59,8 +59,9 @@ def test_mismatch_on_revision():
         document_reference="ABC-WXY-ZZ-00-DR-A-0001",
         revision="P02",
     )
-    _comps, _hist, status, _notes = compare_document(filename, titleblock, DEFAULT_RULES)
+    _comps, _hist, status, notes = compare_document(filename, titleblock, DEFAULT_RULES)
     assert status == CheckStatus.MISMATCH
+    assert any("revision mismatch" in note.lower() for note in notes)
 
 
 def test_title_compared_only_when_both_present():
@@ -77,8 +78,9 @@ def test_title_compared_only_when_both_present():
         revision="P01",
         title="First Floor GA",
     )
-    _comps, _hist, status, _notes = compare_document(filename, titleblock, DEFAULT_RULES)
+    _comps, _hist, status, notes = compare_document(filename, titleblock, DEFAULT_RULES)
     assert status == CheckStatus.MISMATCH
+    assert any("title mismatch" in note.lower() for note in notes)
 
 
 def test_non_iso_filename_still_extracts_titleblock():
@@ -125,3 +127,31 @@ def test_history_mismatch_when_latest_rev_differs():
     rev = next(item for item in hist if item.name == "history_revision")
     assert rev.matched is False
     assert any("P02" in note for note in notes)
+
+
+def test_mismatch_status_label_names_the_field():
+    from pathlib import Path
+
+    from drawing_qa.compare import build_result
+    from drawing_qa.models import DocumentResult
+
+    result = DocumentResult(
+        path=Path("sheet.pdf"),
+        filename=FilenameFields(
+            raw_stem="x",
+            document_reference="ABC-WXY-ZZ-00-DR-A-0001",
+            revision="P01",
+            title="Ground Floor GA",
+            parse_ok=True,
+        ),
+        titleblock=TitleBlockFields(
+            layout_id="bottom_right",
+            document_reference="ABC-WXY-ZZ-00-DR-A-0001",
+            revision="P01",
+            title="First Floor GA",
+        ),
+    )
+    result = build_result(result, DEFAULT_RULES)
+    assert result.status == CheckStatus.MISMATCH
+    assert result.status_label() == "MISMATCH: TITLE"
+    assert any("title mismatch" in note.lower() for note in result.notes)

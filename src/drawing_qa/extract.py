@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 
 from drawing_qa.models import BBox, ExtractedField, Word, bbox_of
+from drawing_qa.timing import span as timing_span
 from drawing_qa.tokens import DATE_IN_TEXT, extract_suitability, is_revision_token
 
 try:
@@ -14,6 +15,18 @@ except ImportError:  # pragma: no cover
 def require_pymupdf() -> None:
     if pymupdf is None:
         raise RuntimeError("PyMuPDF is required. Install with: pip install pymupdf")
+
+
+# Full-page word lists keyed by id(page). Cleared when the PDF page/doc is done.
+_page_word_cache: dict[int, list[Word]] = {}
+
+
+def clear_page_word_cache(page=None) -> None:
+    """Drop cached words for one page, or all pages if page is None."""
+    if page is None:
+        _page_word_cache.clear()
+        return
+    _page_word_cache.pop(id(page), None)
 
 
 def page_rect(page, region):
@@ -39,10 +52,14 @@ def _visual_rect(page, x0: float, y0: float, x1: float, y1: float):
 
 def extract_words(page, region=None) -> list[Word]:
     require_pymupdf()
+    with timing_span("extract_words"):
+        return _extract_words(page, region)
+
+
+def _page_words_uncached(page) -> list[Word]:
     # Do not clip in page.rect space: get_text() uses unrotated coordinates on
-    # rotated CAD sheets. Transform first, then filter by the visual region.
+    # rotated CAD sheets. Transform first; region filtering happens afterwards.
     raw = page.get_text("words") or []
-    clip = page_rect(page, region) if region is not None else None
     words: list[Word] = []
     seen: set[tuple] = set()
     for item in raw:
@@ -54,14 +71,31 @@ def extract_words(page, region=None) -> list[Word]:
         if key in seen:
             continue
         seen.add(key)
-        word = Word(x0=box.x0, y0=box.y0, x1=box.x1, y1=box.y1, text=text)
-        if clip is not None and not (
-            clip.x0 <= word.cx <= clip.x1 and clip.y0 <= word.cy <= clip.y1
-        ):
-            continue
-        words.append(word)
+        words.append(Word(x0=box.x0, y0=box.y0, x1=box.x1, y1=box.y1, text=text))
     words.sort(key=lambda w: (round(w.y0, 1), w.x0))
     return words
+
+
+def _full_page_words(page) -> list[Word]:
+    key = id(page)
+    cached = _page_word_cache.get(key)
+    if cached is not None:
+        return cached
+    words = _page_words_uncached(page)
+    _page_word_cache[key] = words
+    return words
+
+
+def _extract_words(page, region=None) -> list[Word]:
+    words = _full_page_words(page)
+    if region is None:
+        return list(words)
+    clip = page_rect(page, region)
+    return [
+        word
+        for word in words
+        if clip.x0 <= word.cx <= clip.x1 and clip.y0 <= word.cy <= clip.y1
+    ]
 
 
 def words_to_lines(words: list[Word], y_tolerance: float = 4.0) -> list[list[Word]]:
@@ -180,12 +214,24 @@ def height_of(words: list[Word]) -> float:
     return max(max(w.y1 for w in words) - min(w.y0 for w in words), 8.0)
 
 
-def _below(words: list[Word], label_words: list[Word]) -> list[Word]:
+# Title values sit under/right of the heading. A wide left band pulls in
+# drawing notes (grid numbers, "2-04", duct sizes) from the sheet body.
+_TIGHT_LEFT_BELOW_LABELS = {"TITLE", "DRAWING TITLE"}
+
+
+def _below(
+    words: list[Word],
+    label_words: list[Word],
+    *,
+    left_pad: float | None = None,
+) -> list[Word]:
     x0 = min(w.x0 for w in label_words)
     x1 = max(w.x1 for w in label_words)
     y1 = max(w.y1 for w in label_words)
     width = max(x1 - x0, 1.0)
-    band_left = x0 - max(width * 2.5, 160.0)
+    if left_pad is None:
+        left_pad = max(width * 2.5, 160.0)
+    band_left = x0 - left_pad
     # Titles often span most of the title-block width, far beyond the label.
     band_right = x1 + max(width * 2.5, 400.0)
     chosen: list[Word] = []
@@ -260,11 +306,16 @@ def extract_near_label_words(
             if normalize_label(item) != normalize_label(used_label or "")
         ]
         directions = [direction] if direction != "auto" else ["right", "below"]
+        tight_left = normalize_label(used_label or "") in _TIGHT_LEFT_BELOW_LABELS
         for d in directions:
             if d == "right":
                 value_words = _same_line_right(remaining, label_words)
             elif d == "below":
-                value_words = _below(remaining, label_words)
+                value_words = _below(
+                    remaining,
+                    label_words,
+                    left_pad=16.0 if tight_left else None,
+                )
             else:
                 raise ValueError(f"Unknown direction {d} for label {used_label}")
             value_words = take_until_label(value_words, stops)

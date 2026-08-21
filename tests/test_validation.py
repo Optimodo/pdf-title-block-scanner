@@ -123,7 +123,7 @@ def test_dwg_pairing_with_naming_mismatch(tmp_path: Path, config_dir: Path):
     
     assert result.paired_dwg == dwg
     assert result.dwg_mismatch is True
-    assert any("DWG file naming mismatch" in note for note in result.notes)
+    assert any("paired by document reference" in note.lower() for note in result.notes)
 
 
 def test_no_dwg_pairing_when_dwg_absent(tmp_path: Path, config_dir: Path):
@@ -141,6 +141,36 @@ def test_no_dwg_pairing_when_dwg_absent(tmp_path: Path, config_dir: Path):
     
     assert result.paired_dwg is None
     assert result.dwg_mismatch is False
+
+
+def test_dwg_pairs_when_pdf_has_revision_and_dwg_does_not(tmp_path: Path, config_dir: Path):
+    pdf = write_bottom_right_pdf(
+        tmp_path / "ABC-WXY-ZZ-00-DR-A-0001_C08.pdf",
+        document_reference="ABC-WXY-ZZ-00-DR-A-0001",
+        title="Floor Plan",
+        revision="C08",
+    )
+    dwg = tmp_path / "ABC-WXY-ZZ-00-DR-A-0001.dwg"
+    dwg.write_text("")
+    results = check_paths([pdf], load_config(config_dir))
+    assert results[0].paired_dwg == dwg
+    assert results[0].dwg_mismatch is True
+
+
+def test_dwg_pairs_when_dwg_has_title_and_revision_and_pdf_does_not(
+    tmp_path: Path, config_dir: Path
+):
+    pdf = write_bottom_right_pdf(
+        tmp_path / "ABC-WXY-ZZ-00-DR-A-0001.pdf",
+        document_reference="ABC-WXY-ZZ-00-DR-A-0001",
+        title="Floor Plan",
+        revision="P01",
+    )
+    dwg = tmp_path / "ABC-WXY-ZZ-00-DR-A-0001 - Floor Plan_P01.dwg"
+    dwg.write_text("")
+    results = check_paths([pdf], load_config(config_dir))
+    assert results[0].paired_dwg == dwg
+    assert results[0].dwg_mismatch is True
 
 
 def test_duplicates_dont_override_serious_issues(tmp_path: Path, config_dir: Path):

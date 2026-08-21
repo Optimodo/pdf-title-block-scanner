@@ -33,6 +33,14 @@ MAIN_FIELDS = (
     "date",
 )
 
+MISMATCH_FIELD_LABELS = {
+    "document_reference": "DOC REF",
+    "revision": "REVISION",
+    "title": "TITLE",
+    "suitability": "SUITABILITY",
+    "date": "DATE",
+}
+
 
 @dataclass(frozen=True)
 class RectFrac:
@@ -236,14 +244,30 @@ class DocumentResult:
     dwg_files_present: bool = False
     issues: list[CheckStatus] = field(default_factory=list)
 
+    def mismatch_field_labels(self) -> list[str]:
+        """Human names of filename vs title-block fields that disagreed."""
+        labels: list[str] = []
+        for item in self.comparisons:
+            if item.matched is False and item.name in MISMATCH_FIELD_LABELS:
+                labels.append(MISMATCH_FIELD_LABELS[item.name])
+        return labels
+
     def status_label(self) -> str:
         """Status text for the report: one code, or MULTIPLE plus every issue."""
         issues = [item for item in self.issues if item != CheckStatus.MULTIPLE_ISSUES]
         if not issues:
             return self.status.value
-        if len(issues) == 1:
-            return issues[0].value
-        return "MULTIPLE: " + ", ".join(item.value for item in issues)
+        parts = [self._issue_label(item) for item in issues]
+        if len(parts) == 1:
+            return parts[0]
+        return "MULTIPLE: " + ", ".join(parts)
+
+    def _issue_label(self, status: CheckStatus) -> str:
+        if status == CheckStatus.MISMATCH:
+            fields = self.mismatch_field_labels()
+            if fields:
+                return "MISMATCH: " + ", ".join(fields)
+        return status.value
 
 
 def record_issue(result: DocumentResult, status: CheckStatus) -> None:
