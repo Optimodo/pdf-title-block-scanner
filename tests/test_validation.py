@@ -173,6 +173,105 @@ def test_dwg_pairs_when_dwg_has_title_and_revision_and_pdf_does_not(
     assert results[0].dwg_mismatch is True
 
 
+def test_dotted_sheet_suffixes_are_not_duplicates(tmp_path: Path, config_dir: Path):
+    pdf1 = write_bottom_right_pdf(
+        tmp_path / "R459-MBS-DZ-ZZ-DR-W-51333.1 - Sheet One.pdf",
+        document_reference="R459-MBS-DZ-ZZ-DR-W-51333.1",
+        title="Sheet One",
+        revision="C01",
+    )
+    pdf2 = write_bottom_right_pdf(
+        tmp_path / "R459-MBS-DZ-ZZ-DR-W-51333.2 - Sheet Two.pdf",
+        document_reference="R459-MBS-DZ-ZZ-DR-W-51333.2",
+        title="Sheet Two",
+        revision="C01",
+    )
+    results = check_paths([pdf1, pdf2], load_config(config_dir))
+    assert all(r.status == CheckStatus.MATCH for r in results)
+    assert results[0].titleblock.document_reference == "R459-MBS-DZ-ZZ-DR-W-51333.1"
+    assert results[1].titleblock.document_reference == "R459-MBS-DZ-ZZ-DR-W-51333.2"
+    assert results[0].filename.document_reference == "R459-MBS-DZ-ZZ-DR-W-51333.1"
+    assert results[1].filename.document_reference == "R459-MBS-DZ-ZZ-DR-W-51333.2"
+
+
+def test_dwg_pairs_dotted_pdf_number_with_hyphen_dwg(tmp_path: Path, config_dir: Path):
+    pdf = write_bottom_right_pdf(
+        tmp_path / "R459-MBS-DZ-ZZ-DR-W-51333.1 - Sheet One.pdf",
+        document_reference="R459-MBS-DZ-ZZ-DR-W-51333.1",
+        title="Sheet One",
+        revision="C01",
+    )
+    dwg = tmp_path / "R459-MBS-DZ-ZZ-DR-W-51333-1.dwg"
+    dwg.write_text("")
+    results = check_paths([pdf], load_config(config_dir))
+    assert results[0].paired_dwg == dwg
+    assert results[0].dwg_mismatch is True
+    assert results[0].dwg_issue == "sheet_suffix"
+    assert CheckStatus.DWG_ISSUE in results[0].issues
+    assert any(".1 vs -1" in note for note in results[0].notes)
+
+
+def test_missing_dwg_is_flagged_when_folder_has_other_dwgs(tmp_path: Path, config_dir: Path):
+    pdf_ok = write_bottom_right_pdf(
+        tmp_path / "ABC-WXY-ZZ-00-DR-A-0001-P01.pdf",
+        document_reference="ABC-WXY-ZZ-00-DR-A-0001",
+        title="Floor Plan",
+        revision="P01",
+    )
+    pdf_missing = write_bottom_right_pdf(
+        tmp_path / "ABC-WXY-ZZ-00-DR-A-0002-P01.pdf",
+        document_reference="ABC-WXY-ZZ-00-DR-A-0002",
+        title="Roof Plan",
+        revision="P01",
+    )
+    (tmp_path / "ABC-WXY-ZZ-00-DR-A-0001-P01.dwg").write_text("")
+    results = check_paths([pdf_ok, pdf_missing], load_config(config_dir))
+    by_name = {item.path.name: item for item in results}
+    assert by_name[pdf_ok.name].paired_dwg is not None
+    assert by_name[pdf_ok.name].dwg_issue is None
+    assert CheckStatus.DWG_ISSUE not in by_name[pdf_ok.name].issues
+    assert by_name[pdf_missing.name].paired_dwg is None
+    assert by_name[pdf_missing.name].dwg_issue == "missing"
+    assert CheckStatus.DWG_ISSUE in by_name[pdf_missing.name].issues
+
+
+def test_dwg_report_tab_lists_sheet_suffix_and_missing(tmp_path: Path, config_dir: Path):
+    from openpyxl import load_workbook
+
+    from drawing_qa.report import write_report
+
+    pdf_suffix = write_bottom_right_pdf(
+        tmp_path / "R459-MBS-DZ-ZZ-DR-W-51333.1 - Sheet One.pdf",
+        document_reference="R459-MBS-DZ-ZZ-DR-W-51333.1",
+        title="Sheet One",
+        revision="C01",
+    )
+    pdf_missing = write_bottom_right_pdf(
+        tmp_path / "ABC-WXY-ZZ-00-DR-A-0002-P01.pdf",
+        document_reference="ABC-WXY-ZZ-00-DR-A-0002",
+        title="Roof Plan",
+        revision="P01",
+    )
+    (tmp_path / "R459-MBS-DZ-ZZ-DR-W-51333-1.dwg").write_text("")
+    (tmp_path / "ORPHAN-DWG.dwg").write_text("")
+    results = check_paths([pdf_suffix, pdf_missing], load_config(config_dir))
+    output = write_report(results, tmp_path / "report.xlsx")
+    wb = load_workbook(output)
+    assert "DWG pairing" in wb.sheetnames
+    sheet = wb["DWG pairing"]
+    texts = [
+        str(cell.value)
+        for row in sheet.iter_rows(min_row=1, max_col=4, values_only=False)
+        for cell in row
+        if cell.value
+    ]
+    blob = " ".join(texts)
+    assert "Sheet number .1 vs -1" in blob
+    assert "Missing DWG" in blob
+    assert "DWG with no PDF" in blob
+    assert "ORPHAN-DWG.dwg" in blob
+
+
 def test_duplicates_dont_override_serious_issues(tmp_path: Path, config_dir: Path):
     """Test that duplicate detection doesn't override more serious statuses."""
     # Create two PDFs with same doc ref but one has a mismatch
@@ -248,3 +347,20 @@ def test_date_regression_still_detected_when_later_rev_is_older_date():
     finalize_status(result)
     assert CheckStatus.DATE_REGRESSION in result.issues
     assert any("Date regression" in note for note in result.notes)
+
+
+def test_date_regression_does_not_compare_p_series_with_c_series():
+    from drawing_qa.models import finalize_status
+
+    result = _history_result(
+        [
+            HistoryRow(revision="P03", date="21.08.26"),
+            HistoryRow(revision="C02", date="11.08.26"),
+            HistoryRow(revision="C01", date="16.06.26"),
+            HistoryRow(revision="P02", date="29.05.26"),
+        ],
+        current_date="21.08.26",
+    )
+    check_date_regression([result])
+    finalize_status(result)
+    assert CheckStatus.DATE_REGRESSION not in result.issues

@@ -15,6 +15,8 @@ class CheckStatus(StrEnum):
     DUPLICATE_REFERENCE = "DUPLICATE_REFERENCE"
     DATE_REGRESSION = "DATE_REGRESSION"
     SUITABILITY_ERROR = "SUITABILITY_ERROR"
+    PURPOSE_MISMATCH = "PURPOSE_MISMATCH"
+    DWG_ISSUE = "DWG_ISSUE"
     FILENAME_PARSE_ERROR = "FILENAME_PARSE_ERROR"
     ERROR = "ERROR"
     MULTIPLE_ISSUES = "MULTIPLE_ISSUES"
@@ -242,6 +244,7 @@ class DocumentResult:
     paired_dwg: Path | None = None
     dwg_mismatch: bool = False
     dwg_files_present: bool = False
+    dwg_issue: str | None = None  # missing | sheet_suffix | name_differs
     issues: list[CheckStatus] = field(default_factory=list)
 
     def mismatch_field_labels(self) -> list[str]:

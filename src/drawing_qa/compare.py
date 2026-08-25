@@ -14,8 +14,13 @@ from drawing_qa.models import (
     record_issue,
 )
 from drawing_qa.spellcheck import check_spelling, format_spelling_note
-from drawing_qa.suitability import suitability_is_allowed, suitability_whitelist_note
+from drawing_qa.suitability import (
+    revision_purpose_mismatch_note,
+    suitability_is_allowed,
+    suitability_whitelist_note,
+)
 from drawing_qa.timing import span as timing_span
+from drawing_qa.docref import canonical_doc_ref
 from drawing_qa.tokens import dates_equal, suitability_code
 
 
@@ -32,6 +37,17 @@ def normalize_title(value: str | None) -> str | None:
         return None
     cleaned = re.sub(r"[\s_\-]+", " ", value).strip().upper()
     return cleaned or None
+
+
+def _compare_doc_ref(left: str | None, right: str | None) -> tuple[bool | None, str]:
+    a, b = canonical_doc_ref(left), canonical_doc_ref(right)
+    if a is None and b is None:
+        return None, "both empty"
+    if a is None:
+        return None, "missing on left"
+    if b is None:
+        return None, "missing on right"
+    return a == b, "equal" if a == b else f"{a} != {b}"
 
 
 def _compare_code(left: str | None, right: str | None) -> tuple[bool | None, str]:
@@ -165,6 +181,8 @@ def compare_document(
             matched, detail = _compare_suitability(fn_val, tb_val)
         elif kind == "date":
             matched, detail = _compare_date(fn_val, tb_val)
+        elif kind == "doc_ref":
+            matched, detail = _compare_doc_ref(fn_val, tb_val)
         else:
             matched, detail = _compare_code(fn_val, tb_val)
         comparisons.append(
@@ -177,7 +195,7 @@ def compare_document(
             )
         )
 
-    add("document_reference", filename.document_reference, titleblock.document_reference, "code")
+    add("document_reference", filename.document_reference, titleblock.document_reference, "doc_ref")
     add("revision", filename.revision, titleblock.revision, "code")
     add("title", filename.title, titleblock.title, "title")
     add("suitability", filename.suitability, titleblock.suitability, "suitability")
@@ -287,6 +305,14 @@ def build_result(
             result.notes.append(suitability_whitelist_note(result.titleblock.suitability))
             if suitability_check_config.fail_on_error:
                 record_issue(result, CheckStatus.SUITABILITY_ERROR)
+
+    purpose_note = revision_purpose_mismatch_note(
+        result.titleblock.revision,
+        result.titleblock.suitability,
+    )
+    if purpose_note:
+        result.notes.append(purpose_note)
+        record_issue(result, CheckStatus.PURPOSE_MISMATCH)
 
     finalize_status(result)
     return result

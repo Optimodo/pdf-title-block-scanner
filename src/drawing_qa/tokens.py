@@ -4,7 +4,35 @@ import re
 from datetime import date, datetime
 
 REV_TOKEN = re.compile(r"^(?:[PC]\d{2}|[A-Z]\d?)$", re.IGNORECASE)
+_PC_REVISION = re.compile(r"^[PC]\d{1,2}$", re.IGNORECASE)
 SUITABILITY_TOKEN = re.compile(r"^(?:S[0-7]|A[0-9]|B[0-9]|CR)$", re.IGNORECASE)
+# CAD fonts sometimes emit Cyrillic letters that look like Latin C/P in C01/P01.
+_LATIN_LOOKALIKES = str.maketrans(
+    {
+        "\u0410": "A",
+        "\u0430": "A",
+        "\u0412": "B",
+        "\u0432": "B",
+        "\u0421": "C",
+        "\u0441": "C",
+        "\u0415": "E",
+        "\u0435": "E",
+        "\u041d": "H",
+        "\u043d": "H",
+        "\u041a": "K",
+        "\u043a": "K",
+        "\u041c": "M",
+        "\u043c": "M",
+        "\u041e": "O",
+        "\u043e": "O",
+        "\u0420": "P",
+        "\u0440": "P",
+        "\u0422": "T",
+        "\u0442": "T",
+        "\u0425": "X",
+        "\u0445": "X",
+    }
+)
 DATE_TOKEN = re.compile(
     r"^("
     r"\d{1,2}[./\-]\d{1,2}[./\-]\d{2,4}"
@@ -46,14 +74,39 @@ MONTHS = {
 }
 
 
+def fold_latin_lookalikes(text: str) -> str:
+    return text.translate(_LATIN_LOOKALIKES)
+
+
+def normalize_revision_token(text: str) -> str:
+    return fold_latin_lookalikes(text.strip()).upper()
+
+
 def is_revision_token(text: str) -> bool:
-    return bool(REV_TOKEN.fullmatch(text.strip()))
+    token = normalize_revision_token(text)
+    if not REV_TOKEN.fullmatch(token):
+        return False
+    return not SUITABILITY_TOKEN.fullmatch(token)
+
+
+def is_pc_revision(text: str) -> bool:
+    return bool(_PC_REVISION.fullmatch(normalize_revision_token(text)))
+
+
+def revision_series(value: str | None) -> str | None:
+    """Return 'P' or 'C' for ISO preliminary/construction revisions."""
+    if not value:
+        return None
+    token = normalize_revision_token(value)
+    if _PC_REVISION.fullmatch(token):
+        return token[0]
+    return None
 
 
 def revision_rank(value: str | None) -> tuple:
     if not value:
         return (9, 0, "")
-    rev = value.strip().upper()
+    rev = normalize_revision_token(value)
     match = re.fullmatch(r"P(\d{1,2})", rev)
     if match:
         return (0, int(match.group(1)), rev)
@@ -73,7 +126,8 @@ def extract_suitability(text: str | None) -> str | None:
     """Return 'S2 - Suitable for Tender' or 'A - Construction' from code + description."""
     if not text:
         return None
-    cleaned = DATE_IN_TEXT.sub(" ", text)
+    cleaned = fold_latin_lookalikes(text)
+    cleaned = DATE_IN_TEXT.sub(" ", cleaned)
     cleaned = re.sub(r"\b[PC]\d{1,2}\b", " ", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\b[A-Z]\.[A-Z]\.?\b", " ", cleaned)
     tail = _SUITABILITY_TAIL.search(cleaned)

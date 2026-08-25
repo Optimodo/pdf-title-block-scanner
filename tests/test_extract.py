@@ -134,6 +134,27 @@ def test_title_includes_word_starting_under_the_label():
     assert "03-13" in found[0]
 
 
+def test_wrapped_title_keeps_second_line_with_auto_direction():
+    """Right-of-label capture must not drop a continuation line below."""
+    words = [
+        Word(x0=3060, y0=2189, x1=3091, y1=2201, text="Drawing"),
+        Word(x0=3093, y0=2189, x1=3110, y1=2201, text="Title"),
+        Word(x0=3073, y0=2202, x1=3110, y1=2214, text="BLOCK"),
+        Word(x0=3111, y0=2202, x1=3120, y1=2214, text="D"),
+        Word(x0=3121, y0=2202, x1=3185, y1=2214, text="APARTMENT"),
+        Word(x0=3186, y0=2202, x1=3214, y1=2214, text="TYPE"),
+        Word(x0=3215, y0=2202, x1=3230, y1=2214, text="A1"),
+        Word(x0=3231, y0=2202, x1=3310, y1=2214, text="VENTILATION"),
+        Word(x0=3163, y0=2214, x1=3210, y1=2226, text="LAYOUT"),
+        Word(x0=3060, y0=2274, x1=3084, y1=2286, text="Scale"),
+    ]
+    found = extract_near_label_words(
+        words, ["DRAWING TITLE", "TITLE"], "auto", stop_labels=["SCALE"]
+    )
+    assert found is not None
+    assert found[0] == "BLOCK D APARTMENT TYPE A1 VENTILATION LAYOUT"
+
+
 def test_title_ignores_drawing_notes_left_of_title_heading():
     """Sheet notes left of TITLE (grid '2-04', sizes) must not join the title."""
     words = [

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import date
+
 from drawing_qa.extract import all_text, find_label, line_text, normalize_label, words_to_lines
 from drawing_qa.models import (
     HistoryRow,
@@ -13,7 +15,10 @@ from drawing_qa.models import (
 from drawing_qa.tokens import (
     DATE_IN_TEXT,
     extract_suitability,
+    is_pc_revision,
     is_revision_token,
+    normalize_revision_token,
+    parse_date,
     revision_rank,
     suitability_code,
 )
@@ -70,10 +75,11 @@ def _clip_words_to_history_table(
 
 
 def _line_revision(line: list[Word]) -> Word | None:
-    for word in line:
-        if is_revision_token(word.text):
-            return word
-    return None
+    candidates = [word for word in line if is_revision_token(word.text)]
+    if not candidates:
+        return None
+    pc = [word for word in candidates if is_pc_revision(word.text)]
+    return (pc or candidates)[0]
 
 
 def _line_date(line: list[Word]) -> str | None:
@@ -106,7 +112,7 @@ def _parse_row(line: list[Word]) -> HistoryRow | None:
         if code and description.upper().startswith(code):
             description = description[len(code) :].strip(" -–:") or None
     return HistoryRow(
-        revision=rev_word.text.upper(),
+        revision=normalize_revision_token(rev_word.text),
         date=date_value,
         suitability=suit,
         description=description,
@@ -133,6 +139,11 @@ def _cluster_rows(rows: list[HistoryRow], x_tolerance: float = 24.0) -> list[lis
     return clusters
 
 
+def _row_recency(row: HistoryRow) -> tuple:
+    parsed = parse_date(row.date) if row.date else None
+    return (parsed or date.min, revision_rank(row.revision))
+
+
 def detect_revision_history(words: list[Word], spec: HistorySpec | None = None) -> RevisionHistory:
     spec = spec or HistorySpec()
     result = RevisionHistory()
@@ -157,7 +168,7 @@ def detect_revision_history(words: list[Word], spec: HistorySpec | None = None) 
         return result
 
     cluster.sort(key=lambda row: min(w.y0 for w in row.words))
-    latest = max(cluster, key=lambda row: revision_rank(row.revision))
+    latest = max(cluster, key=_row_recency)
     boxes = [row.bbox for row in cluster if row.bbox]
     bbox = boxes[0]
     for extra in boxes[1:]:

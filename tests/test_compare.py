@@ -155,3 +155,20 @@ def test_mismatch_status_label_names_the_field():
     assert result.status == CheckStatus.MISMATCH
     assert result.status_label() == "MISMATCH: TITLE"
     assert any("title mismatch" in note.lower() for note in result.notes)
+
+
+def test_dotted_and_hyphen_document_numbers_match():
+    filename = FilenameFields(
+        raw_stem="x",
+        document_reference="R459-MBS-DZ-ZZ-DR-W-51333.1",
+        revision="C01",
+        parse_ok=True,
+    )
+    titleblock = TitleBlockFields(
+        layout_id="mbs_right",
+        document_reference="R459-MBS-DZ-ZZ-DR-W-51333-1",
+        revision="C01",
+        title="Block D",
+    )
+    _comps, _hist, status, _notes = compare_document(filename, titleblock, DEFAULT_RULES)
+    assert status == CheckStatus.MATCH

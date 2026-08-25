@@ -4,7 +4,13 @@ import re
 
 from drawing_qa.models import BBox, ExtractedField, Word, bbox_of
 from drawing_qa.timing import span as timing_span
-from drawing_qa.tokens import DATE_IN_TEXT, extract_suitability, is_revision_token
+from drawing_qa.tokens import (
+    DATE_IN_TEXT,
+    extract_suitability,
+    is_pc_revision,
+    is_revision_token,
+    normalize_revision_token,
+)
 
 try:
     import pymupdf
@@ -275,6 +281,19 @@ def take_until_label(words: list[Word], stop_labels: list[str]) -> list[Word]:
     return kept
 
 
+def _unique_words(words: list[Word]) -> list[Word]:
+    seen: set[tuple] = set()
+    unique: list[Word] = []
+    for word in words:
+        key = (round(word.x0, 1), round(word.y0, 1), word.text)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(word)
+    unique.sort(key=lambda w: (round(w.y0, 1), w.x0))
+    return unique
+
+
 def extract_near_label_words(
     words: list[Word],
     labels: list[str],
@@ -307,6 +326,8 @@ def extract_near_label_words(
         ]
         directions = [direction] if direction != "auto" else ["right", "below"]
         tight_left = normalize_label(used_label or "") in _TIGHT_LEFT_BELOW_LABELS
+        merge_directions = tight_left
+        collected: list[Word] = []
         for d in directions:
             if d == "right":
                 value_words = _same_line_right(remaining, label_words)
@@ -326,9 +347,19 @@ def extract_near_label_words(
                     for word in value_words
                     if normalize_label(word.text) != used_norm
                 ]
+            if not value_words:
+                continue
+            if merge_directions:
+                collected.extend(value_words)
+                continue
             text = " ".join(w.text for w in value_words).strip()
             if text:
                 return text, value_words
+        if collected:
+            collected = _unique_words(collected)
+            text = " ".join(w.text for w in collected).strip()
+            if text:
+                return text, collected
         remaining = words_outside(remaining, bbox_of(label_words), pad=1)
     return None
 
@@ -358,13 +389,22 @@ def apply_pattern(text: str | None, words: list[Word], pattern: str | None, fiel
         kept = [w for w in words if DATE_IN_TEXT.search(w.text) or w.text in value]
         return ExtractedField(name=field_name, value=value, words=kept or words)
     if field_name == "revision":
-        token = next((w for w in words if is_revision_token(w.text)), None)
+        candidates = [word for word in words if is_revision_token(word.text)]
+        token = next((word for word in candidates if is_pc_revision(word.text)), None)
+        if token is None and candidates:
+            token = candidates[0]
         if token:
-            return ExtractedField(name=field_name, value=token.text.upper(), words=[token])
+            return ExtractedField(
+                name=field_name,
+                value=normalize_revision_token(token.text),
+                words=[token],
+            )
     if not pattern:
         return ExtractedField(name=field_name, value=text.strip() or None, words=words)
     match = re.search(pattern, text, flags=re.IGNORECASE)
     if not match:
         return ExtractedField(name=field_name)
     value = match.group(0).strip()
+    if field_name == "document_reference" and value:
+        value = re.sub(r"(\d+)\s+[.](\d+)\s*$", r"\1.\2", value)
     return ExtractedField(name=field_name, value=value or None, words=words)

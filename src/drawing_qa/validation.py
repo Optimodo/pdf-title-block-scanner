@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from collections import defaultdict
 
-from drawing_qa.compare import normalize_code
+from drawing_qa.docref import canonical_doc_ref
 from drawing_qa.models import CheckStatus, DocumentResult, record_issue
 from drawing_qa.tokens import parse_date, revision_rank
 
@@ -26,8 +26,8 @@ def check_duplicates(results: list[DocumentResult]) -> list[DocumentResult]:
     ref_groups: dict[str, list[DocumentResult]] = defaultdict(list)
     
     for result in results:
-        doc_ref = result.titleblock.document_reference
-        if doc_ref and doc_ref.strip():
+        doc_ref = canonical_doc_ref(result.titleblock.document_reference)
+        if doc_ref:
             ref_groups[doc_ref].append(result)
     
     # Flag duplicates
@@ -67,17 +67,24 @@ def check_date_regression(results: list[DocumentResult]) -> list[DocumentResult]
             if parsed is None:
                 continue
             dated_rows.append((row, parsed))
-        dated_rows.sort(key=lambda item: revision_rank(item[0].revision))
+
+        by_series: dict[str, list] = defaultdict(list)
+        for row, parsed in dated_rows:
+            token = (row.revision or "?").strip().upper()
+            series = token[0] if token else "?"
+            by_series[series].append((row, parsed))
 
         regression_found = False
-        for (prev_row, prev_date), (row, current_date) in zip(dated_rows, dated_rows[1:]):
-            if current_date < prev_date:
-                regression_found = True
-                note = (
-                    f"Date regression in history: {row.revision} dated {row.date} "
-                    f"is before {prev_row.revision} dated {prev_row.date}"
-                )
-                result.notes.append(note)
+        for items in by_series.values():
+            items.sort(key=lambda item: revision_rank(item[0].revision))
+            for (prev_row, prev_date), (row, current_date) in zip(items, items[1:]):
+                if current_date < prev_date:
+                    regression_found = True
+                    note = (
+                        f"Date regression in history: {row.revision} dated {row.date} "
+                        f"is before {prev_row.revision} dated {prev_row.date}"
+                    )
+                    result.notes.append(note)
         
         # Also check current date vs latest history
         if result.titleblock.date and history.latest and history.latest.date:
@@ -100,8 +107,8 @@ def _document_references_differ(result: DocumentResult) -> bool:
     for item in result.comparisons:
         if item.name == "document_reference":
             return item.matched is False
-    filename_ref = normalize_code(result.filename.document_reference)
-    titleblock_ref = normalize_code(result.titleblock.document_reference)
+    filename_ref = canonical_doc_ref(result.filename.document_reference)
+    titleblock_ref = canonical_doc_ref(result.titleblock.document_reference)
     if not filename_ref or not titleblock_ref:
         return False
     return filename_ref != titleblock_ref

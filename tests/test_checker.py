@@ -108,7 +108,13 @@ def test_excel_report_created(tmp_path: Path, config_dir: Path):
     from openpyxl import load_workbook
 
     wb = load_workbook(output)
-    assert set(wb.sheetnames) == {"Summary", "Review needed", "High confidence", "All documents"}
+    assert set(wb.sheetnames) == {
+        "Summary",
+        "Review needed",
+        "DWG pairing",
+        "High confidence",
+        "All documents",
+    }
     assert wb["All documents"].max_row == 3  # header + 2 rows
     assert wb["High confidence"].max_row == 2
     assert wb["Review needed"].max_row == 2
@@ -155,7 +161,7 @@ def test_history_latest_used_not_older_rows(tmp_path: Path, config_dir: Path):
     assert result.titleblock.history.latest.revision == "P03"
     assert result.status == CheckStatus.MATCH
     assert result.confidence == Confidence.HIGH
-    assert result.preview_png  # preview.all_files is on for speed comparison
+    assert result.preview_png is None  # preview.all_files is false; MATCH rows skip crops
 
 
 def test_history_match_can_skip_preview_when_mismatch_only(tmp_path: Path, config_dir: Path):

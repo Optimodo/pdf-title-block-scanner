@@ -31,6 +31,9 @@ _MID_REV_THEN_TITLE = re.compile(
     r"^([PC]\d{1,2}|[A-Z]\d{2})(?:_|\s+-\s+|\s+|-)(.+)$",
     re.IGNORECASE,
 )
+# Rare non-standard sheet suffix on the last number: 51333.1 (DWGs often use 51333-1).
+_DOTTED_SHEET_SUFFIX = re.compile(r"^\.(\d+)(.*)$")
+_CANONICAL_DOTTED_SHEET = re.compile(r"(\d+)\.(\d+)$")
 
 
 @dataclass
@@ -197,6 +200,37 @@ def _extend_compound_or_strip_date_suffix(base: str, tail: str) -> tuple[str, st
     return base.replace("_", "-"), tail, notes
 
 
+def canonical_doc_ref(value: str | None) -> str | None:
+    """Uppercase ISO ref; treat 51333.1 and 51333-1 as the same sheet suffix."""
+    if value is None:
+        return None
+    cleaned = re.sub(r"\s+", "", value).strip().upper().replace("_", "-")
+    if not cleaned:
+        return None
+    return _CANONICAL_DOTTED_SHEET.sub(r"\1-\2", cleaned)
+
+
+def sheet_suffix_style(doc_ref: str | None) -> str | None:
+    """How a rare extra sheet number is written: 'dot' (51333.1) or 'hyphen' (51333-1)."""
+    if not doc_ref:
+        return None
+    parts = [part for part in doc_ref.replace("_", "-").split("-") if part]
+    if not parts:
+        return None
+    last = parts[-1]
+    if re.fullmatch(r"\d+\.\d+", last):
+        return "dot"
+    if (
+        len(parts) >= 8
+        and last.isdigit()
+        and parts[-2].isdigit()
+        and 1 <= len(last) <= 2
+        and len(parts[-2]) >= 4
+    ):
+        return "hyphen"
+    return None
+
+
 def _title_is_date_originator_only(title: str | None) -> bool:
     if not title:
         return False
@@ -267,6 +301,12 @@ def parse_name_without_ext(name_without_ext: str) -> ParseResult:
     base, tail, date_notes = _extend_compound_or_strip_date_suffix(base, tail)
     warnings.extend(date_notes)
 
+    sheet_suffix = None
+    dotted = _DOTTED_SHEET_SUFFIX.match(tail)
+    if dotted:
+        sheet_suffix = dotted.group(1)
+        tail = dotted.group(2)
+
     mid_pc, mid_other, title = _parse_tail_after_docref(tail)
     if _title_is_date_originator_only(title):
         warnings.append(f"removed date/originator export suffix {title!r}")
@@ -310,6 +350,8 @@ def parse_name_without_ext(name_without_ext: str) -> ParseResult:
         )
 
     body, doc_num = extracted
+    if sheet_suffix:
+        doc_num = f"{doc_num}.{sheet_suffix}"
     return ParseResult(
         doc_ref="-".join(body + [doc_num]),
         revision_pc=revision_pc,

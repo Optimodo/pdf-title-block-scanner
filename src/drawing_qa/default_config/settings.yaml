@@ -22,6 +22,7 @@ spell_check:
   fail_on_error: true  # Set to false to warn only (add note but don't fail status)
 
 # Purpose-of-issue / suitability whitelist: see suitability.yaml in this folder.
+# P revisions are also checked against review/comment status, and C against construction.
 
 # Temporary scan timings printed at the end of a run. Set false (or TBCHECK_TIMING=0)
 # once optimisation is done — this module is designed to be removed later.

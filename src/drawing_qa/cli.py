@@ -100,7 +100,16 @@ def _print_summary(results) -> None:
         1 for item in results if item.dwg_files_present and not item.paired_dwg
     )
     if any(item.dwg_files_present for item in results):
-        print(f"  DWG pairing: {paired} paired, {missing_dwg} missing")
+        suffix = sum(1 for item in results if item.dwg_issue == "sheet_suffix")
+        names = sum(1 for item in results if item.dwg_issue == "name_differs")
+        extra = []
+        if suffix:
+            extra.append(f"{suffix} .1 vs -1")
+        if names:
+            extra.append(f"{names} other name difference(s)")
+        extra_txt = f" ({', '.join(extra)})" if extra else ""
+        print(f"  DWG pairing: {paired} paired, {missing_dwg} missing{extra_txt}")
+        print("  See the DWG pairing tab in the Excel report")
     else:
         print("  DWG pairing: no DWG files in this folder")
 

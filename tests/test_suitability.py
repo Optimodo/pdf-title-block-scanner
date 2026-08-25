@@ -4,7 +4,12 @@ from drawing_qa.checker import check_pdf
 from drawing_qa.compare import build_result
 from drawing_qa.config_loader import SuitabilityCheckConfig, load_config
 from drawing_qa.models import CheckStatus, DocumentResult, FilenameFields, TitleBlockFields
-from drawing_qa.suitability import normalize_suitability, suitability_is_allowed
+from drawing_qa.suitability import (
+    normalize_suitability,
+    revision_purpose_mismatch_note,
+    suitability_is_allowed,
+    suitability_purpose_family,
+)
 from tests.pdf_fixtures import write_bottom_right_pdf
 
 ISO_LIST = [
@@ -110,6 +115,7 @@ def test_bundled_config_loads_iso_list(config_dir: Path):
     assert config.suitability_check is not None
     assert config.suitability_check.enabled
     assert "S3 - Review and comment" in config.suitability_check.values
+    assert "S5 - Construction" in config.suitability_check.values
 
 
 def test_pdf_accepted_iso_status(tmp_path: Path, config_dir: Path):
@@ -136,3 +142,84 @@ def test_pdf_flags_typo_status(tmp_path: Path, config_dir: Path):
     result = check_pdf(pdf, load_config(config_dir))
     assert result.status == CheckStatus.SUITABILITY_ERROR
     assert any("Reveu" in note or "reveu" in note.lower() for note in result.notes)
+
+
+def test_pdf_accepted_s5_construction(tmp_path: Path, config_dir: Path):
+    pdf = write_bottom_right_pdf(
+        tmp_path / "ABC-WXY-ZZ-00-DR-A-0001-C01.pdf",
+        document_reference="ABC-WXY-ZZ-00-DR-A-0001",
+        title="Ground Floor GA",
+        revision="C01",
+        suitability="S5 - Construction",
+    )
+    result = check_pdf(pdf, load_config(config_dir))
+    assert CheckStatus.SUITABILITY_ERROR not in result.issues
+    assert CheckStatus.PURPOSE_MISMATCH not in result.issues
+
+
+def test_purpose_families():
+    assert suitability_purpose_family("S3 - Review & Comment") == "review"
+    assert suitability_purpose_family("S3") == "review"
+    assert suitability_purpose_family("S5 - Construction") == "construction"
+    assert suitability_purpose_family("A - FOR CONSTRUCTION") == "construction"
+    assert suitability_purpose_family("S2 - Suitable for tender") is None
+
+
+def test_p_revision_with_construction_purpose_is_flagged():
+    assert revision_purpose_mismatch_note("P03", "S5 - CONSTRUCTION")
+    assert revision_purpose_mismatch_note("C02", "S3 - Review and comment")
+    assert revision_purpose_mismatch_note("P01", "S3 - Review and comment") is None
+    assert revision_purpose_mismatch_note("C01", "S5 - Construction") is None
+    assert revision_purpose_mismatch_note("P02", "S2 - Suitable for tender") is None
+
+
+def test_build_result_flags_p_revision_with_construction_status():
+    result = build_result(
+        _matching_result("S5 - Construction"),
+        {
+            "document_reference": "required",
+            "revision": "if_both_present",
+            "title": "if_both_present",
+            "suitability": "if_both_present",
+            "date": "if_both_present",
+        },
+        suitability_check_config=SuitabilityCheckConfig(
+            values=["S3 - Review and comment", "S5 - Construction"]
+        ),
+    )
+    assert CheckStatus.PURPOSE_MISMATCH in result.issues
+    assert any("preliminary" in note.lower() for note in result.notes)
+
+
+def test_build_result_flags_c_revision_with_review_status():
+    result = DocumentResult(
+        path=Path("ABC-WXY-ZZ-00-DR-A-0001-C01.pdf"),
+        filename=FilenameFields(
+            raw_stem="ABC-WXY-ZZ-00-DR-A-0001-C01",
+            document_reference="ABC-WXY-ZZ-00-DR-A-0001",
+            revision="C01",
+            parse_ok=True,
+        ),
+        titleblock=TitleBlockFields(
+            layout_id="bottom_right",
+            document_reference="ABC-WXY-ZZ-00-DR-A-0001",
+            revision="C01",
+            title="Ground Floor GA",
+            suitability="S3 - Review and comment",
+        ),
+    )
+    result = build_result(
+        result,
+        {
+            "document_reference": "required",
+            "revision": "if_both_present",
+            "title": "if_both_present",
+            "suitability": "if_both_present",
+            "date": "if_both_present",
+        },
+        suitability_check_config=SuitabilityCheckConfig(
+            values=["S3 - Review and comment", "S5 - Construction"]
+        ),
+    )
+    assert CheckStatus.PURPOSE_MISMATCH in result.issues
+    assert any("construction (C)" in note for note in result.notes)

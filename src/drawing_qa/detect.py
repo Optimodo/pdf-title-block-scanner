@@ -21,6 +21,16 @@ from drawing_qa.models import (
     Word,
     bbox_of,
 )
+from drawing_qa.tokens import normalize_revision_token
+from drawing_qa.models import (
+    ExtractedField,
+    FieldSpec,
+    RectFrac,
+    TitleBlockFields,
+    TitleBlockLayout,
+    Word,
+    bbox_of,
+)
 
 
 def _normalize_for_search(text: str) -> str:
@@ -158,12 +168,34 @@ def extract_titleblock(
 
     filled: list[TitleBlockFields] = []
     for score, layout in candidates:
-        item = _extract_layout_fields(page, layout, score)
-        filled.append(item)
-        if item.document_reference:
-            break
-    chosen = next((item for item in filled if item.document_reference), filled[0])
-    return chosen
+        filled.append(_extract_layout_fields(page, layout, score))
+    return _choose_layout_result(filled, layouts)
+
+
+def _choose_layout_result(
+    filled: list[TitleBlockFields],
+    layouts: list[TitleBlockLayout],
+) -> TitleBlockFields:
+    """Prefer a layout that read a doc-ref, then the most complete title/fields."""
+    by_id = {layout.id: layout for layout in layouts}
+
+    def sort_key(item: TitleBlockFields) -> tuple:
+        layout = by_id.get(item.layout_id)
+        min_score = layout.min_score if layout else 0.0
+        filled_count = sum(
+            1
+            for name in ("document_reference", "title", "revision", "suitability", "date")
+            if getattr(item, name)
+        )
+        return (
+            1 if item.document_reference else 0,
+            filled_count,
+            len(item.title or ""),
+            item.score,
+            min_score,
+        )
+
+    return max(filled, key=sort_key)
 
 
 def _extract_layout_fields(page, layout: TitleBlockLayout, score: float) -> TitleBlockFields:
@@ -216,6 +248,12 @@ def _extract_layout_fields(page, layout: TitleBlockLayout, score: float) -> Titl
     result.revision = (extracted.get("revision") or ExtractedField("revision")).value
     result.suitability = (extracted.get("suitability") or ExtractedField("suitability")).value
     result.date = (extracted.get("date") or ExtractedField("date")).value
+    if result.history.rows and result.revision:
+        current = normalize_revision_token(result.revision)
+        for row in result.history.rows:
+            if row.revision and normalize_revision_token(row.revision) == current:
+                result.history.latest = row
+                break
     missing = [name for name in ("document_reference", "revision") if not getattr(result, name)]
     if missing:
         result.notes.append("Missing title-block fields: " + ", ".join(missing))

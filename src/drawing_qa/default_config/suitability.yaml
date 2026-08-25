@@ -3,6 +3,8 @@
 # Copy this file (with settings.yaml) into a config\ folder next to TBCheck.exe
 # to override the bundled list. Matching ignores case, extra spaces, and treats
 # "&" as "and".
+# P revisions should use S3 review-and-comment wording; C revisions a construction
+# purpose. Crossed pairings are flagged as PURPOSE_MISMATCH.
 #
 # Starting point: ISO 19650-2 UK National Annex Table NA.1
 # (UK BIM Framework Guidance Part C). 2021 NA wording is also listed where it
@@ -88,3 +90,5 @@ values:
   - A - For Construction
   - S2 - Suitable for tender
   - S4 - Construction
+  - S5 - Construction
+

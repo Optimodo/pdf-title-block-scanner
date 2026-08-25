@@ -144,3 +144,37 @@ def test_seven_block_doc_ref_with_underscore_title():
     assert parsed.document_reference == "ABC-WXY-ZZ-00-DR-A-0001"
     assert parsed.title == "Ground Floor - GA"
     assert parsed.revision == "P01"
+
+
+def test_dotted_sheet_suffix_stays_on_document_number():
+    parsed = parse_filename(
+        "R459-MBS-DZ-ZZ-DR-W-51333.1 - BLOCK D APARTMENT TYPE E1 MECHANICAL PIPEWORK LAYOUT.pdf"
+    )
+    assert parsed.parse_ok
+    assert parsed.document_reference == "R459-MBS-DZ-ZZ-DR-W-51333.1"
+    assert parsed.parts["number"] == "51333.1"
+    assert parsed.title == "BLOCK D APARTMENT TYPE E1 MECHANICAL PIPEWORK LAYOUT"
+    assert parsed.revision is None
+
+
+def test_dotted_sheet_suffix_with_revision_and_not_in_title():
+    parsed = parse_filename("ABC-WXY-ZZ-00-DR-A-0001.2_P01.pdf")
+    assert parsed.parse_ok
+    assert parsed.document_reference == "ABC-WXY-ZZ-00-DR-A-0001.2"
+    assert parsed.parts["number"] == "0001.2"
+    assert parsed.revision == "P01"
+    assert parsed.title is None
+
+
+def test_dotted_and_hyphen_sheet_suffixes_are_the_same_drawing():
+    from drawing_qa.docref import canonical_doc_ref, sheet_suffix_style
+
+    dotted = parse_filename("R459-MBS-DZ-ZZ-DR-W-51333.1.pdf")
+    hyphen = parse_filename("R459-MBS-DZ-ZZ-DR-W-51333-1.pdf")
+    assert dotted.document_reference == "R459-MBS-DZ-ZZ-DR-W-51333.1"
+    assert hyphen.document_reference == "R459-MBS-DZ-ZZ-DR-W-51333-1"
+    assert canonical_doc_ref(dotted.document_reference) == canonical_doc_ref(
+        hyphen.document_reference
+    )
+    assert sheet_suffix_style(dotted.document_reference) == "dot"
+    assert sheet_suffix_style(hyphen.document_reference) == "hyphen"

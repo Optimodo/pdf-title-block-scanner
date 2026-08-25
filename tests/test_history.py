@@ -22,6 +22,54 @@ def test_suitability_code():
     assert suitability_code("A - CONSTRUCTION") == "A"
 
 
+def test_suitability_codes_are_not_revision_tokens():
+    from drawing_qa.tokens import is_revision_token, normalize_revision_token
+
+    assert is_revision_token("P03")
+    assert is_revision_token("C02")
+    assert is_revision_token("С02")  # Cyrillic Es, looks like C
+    assert normalize_revision_token("С02") == "C02"
+    assert not is_revision_token("S5")
+    assert not is_revision_token("S3")
+    assert not is_revision_token("A1")
+
+
+def test_history_cyrillic_c_revision_is_not_read_as_suitability():
+    words = [
+        _w(10, 30, "С02", 30),
+        _w(50, 30, "S5", 20),
+        _w(80, 30, "-", 8),
+        _w(90, 30, "Revised", 40),
+        _w(200, 30, "21.08.26", 50),
+        _w(10, 50, "P02", 30),
+        _w(50, 50, "S3", 20),
+        _w(80, 50, "Issued", 40),
+        _w(200, 50, "05.06.26", 50),
+        _w(10, 70, "Amendments", 60),
+    ]
+    history = detect_revision_history(words)
+    assert history.latest is not None
+    assert history.latest.revision == "C02"
+    assert history.latest.date == "21.08.26"
+    assert history.latest.suitability and history.latest.suitability.startswith("S5")
+    assert [row.revision for row in history.rows] == ["C02", "P02"]
+
+
+def test_history_latest_follows_newest_date_when_p_follows_c():
+    words = [
+        _w(10, 30, "P03"),
+        _w(50, 30, "21.08.26"),
+        _w(10, 50, "C02"),
+        _w(50, 50, "11.08.26"),
+        _w(10, 70, "P02"),
+        _w(50, 70, "29.05.26"),
+        _w(10, 90, "Amendments", 60),
+    ]
+    history = detect_revision_history(words)
+    assert history.latest is not None
+    assert history.latest.revision == "P03"
+
+
 def test_extract_suitability_keeps_description_before_or_after_code():
     from drawing_qa.tokens import extract_suitability
 
