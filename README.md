@@ -17,7 +17,7 @@ For each PDF it:
 2. Detects which configured **title-block layout** the sheet uses.
 3. Reads five current attributes from the title block (not the revision-history table): document reference, title, revision, purpose of issue / suitability, and date.
 4. Parses the **revision history** table separately, takes only the **latest** row, and checks it against the current title-block revision / date / status.
-5. Writes **TBCheckReport.xlsx** with a summary, a Review needed tab, a High confidence tab, and tight screenshots of the five detected fields.
+5. Writes **TBCheckReport.xlsx** with a summary, a Designer actions tab (for sending to CAD), a Review needed tab with previews, a High confidence tab, and tight screenshots of the five detected fields.
 
 Non-ISO filenames are still processed: title-block values are extracted and shown in the report even when the filename cannot supply a document reference.
 
@@ -84,7 +84,7 @@ Revision pattern and field count are set in [`src/drawing_qa/default_config/sett
 
 ## Title-block layouts
 
-Default layouts live in [`src/drawing_qa/default_config/title_blocks/`](src/drawing_qa/default_config/title_blocks/). The accepted purpose-of-issue / suitability list is [`src/drawing_qa/default_config/suitability.yaml`](src/drawing_qa/default_config/suitability.yaml) (ISO 19650-2 UK NA.1 as a starting point). To customize a deployed copy, put YAML files in `config\title_blocks\` next to the exe and include `config\settings.yaml` plus `config\suitability.yaml`.
+Default layouts live in [`src/drawing_qa/default_config/title_blocks/`](src/drawing_qa/default_config/title_blocks/). Purpose-of-issue checking uses [`src/drawing_qa/default_config/suitability.yaml`](src/drawing_qa/default_config/suitability.yaml). Add a `projects:` list keyed by the ISO project code (first filename field, e.g. `R456` Trillium, `R459` Oval C+D, `J106309` Barking Riverside). Projects with no list use `suggested:` (Oval C+D) as the whitelist. P vs C pairing (`PURPOSE_MISMATCH`) is the `purpose:` block in that same file. A revision-history description is only compared with the current purpose when that row matches the whitelist; other history text is treated as a note. To customize a deployed copy, put YAML files in `config\title_blocks\` next to the exe and include `config\settings.yaml` plus `config\suitability.yaml`.
 
 Typical workflow for a new style:
 
@@ -96,11 +96,15 @@ Typical workflow for a new style:
 
 ## Report
 
-The workbook has four sheets. Start on **Review needed**.
+The workbook has six sheets, plus a separate one-tab designer workbook for email. Send **Designer actions** (or the `_designer.xlsx` file) to the design team. Use **Review needed** when you need the full evidence.
+
+Reports are named `{project}_{ddmmyy}.xlsx` from the project name in `suitability.yaml` (or the ISO project code if there is no name) and today's date. A matching `{project}_{ddmmyy}_designer.xlsx` is written beside it.
 
 - **Summary** — confidence counts, status counts, rename counts when files were renamed, and what each status means
-- **Review needed** — mismatches, history disagreements, incomplete reads, undetected layouts, parse errors
-- **High confidence** — filename, current title block, and latest history row all agree
+- **Designer actions** — short counts at the top, then drawing number, title, and plain-language changes for CAD. Same drawings as Review needed; no previews. Purpose-of-issue issues point at the approved list at the bottom of that sheet rather than guessing a status. The `_designer.xlsx` file is this sheet on its own.
+- **Review needed** — mismatches, history disagreements, incomplete reads, undetected layouts, parse errors, plus field previews
+- **DWG pairing** — missing CAD copies and `.1` vs `-1` sheet-number differences
+- **High confidence** — filename, current title block, and latest history revision/status agree (main date may be the first or latest history date)
 - **All documents** — every PDF
 
 Data rows include **File (as scanned)** (name at the start of the run), **New filename**, and **Rename result** so the workbook still makes sense after files have been renamed on disk.
@@ -109,20 +113,21 @@ Each data row is medium height and includes a **preview strip**: five tight crop
 
 | Status | Meaning |
 | --- | --- |
-| `MATCH` | Filename agrees with the current title block; latest history row matches current |
+| `MATCH` | Filename agrees with the current title block; latest history revision/status match current; date matches the first or latest history date |
 | `MISMATCH` | Filename disagrees with the current title-block values; column A names the field (`MISMATCH: TITLE`) |
-| `HISTORY_MISMATCH` | Current title block disagrees with the latest revision-history row |
+| `HISTORY_MISMATCH` | Current revision disagrees with the latest history row, the main date matches neither the first nor the latest history date, or the latest history row is a whitelist purpose that disagrees with the current purpose |
 | `INCOMPLETE` | Layout found, but a required field was missing |
 | `UNDETECTED` | No configured layout scored high enough |
 | `FILENAME_PARSE_ERROR` | Filename is not ISO 19650; title-block values are still reported for manual review |
 | `SPELLING_ERROR` | Possible spelling error in the title |
 | `DATE_REGRESSION` | Later revision in history has an earlier date |
 | `DUPLICATE_REFERENCE` | More than one PDF has the same document reference |
-| `SUITABILITY_ERROR` | Purpose of issue / suitability is not in `suitability.yaml` |
+| `SUITABILITY_ERROR` | Purpose of issue is not on the project whitelist (or `suggested:` when the project has no list) |
+| `PURPOSE_MISMATCH` | P revision with a construction purpose, or C revision with a review purpose (`purpose:` in `suitability.yaml`) |
 | `ERROR` | PDF could not be read |
 | `MULTIPLE_ISSUES` | More than one issue; column A lists them all |
 
-Document reference and revision are **required** when the filename is ISO 19650. Title, suitability, and date are compared when both sides have a value. Older history rows are never compared to the current revision.
+Document reference and revision are **required** when the filename is ISO 19650. Title, suitability, and date are compared when both sides have a value. History revision and suitability are checked against the latest row. The main title-block date may be either the original issue date or the latest revision date (designers differ on this), so it is only flagged when it matches neither. History dates must still be sequential within the P series and within the C series.
 
 ## Tests and Linux freeze check
 

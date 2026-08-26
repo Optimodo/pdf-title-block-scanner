@@ -7,12 +7,19 @@ from pathlib import Path
 
 from openpyxl import Workbook
 from openpyxl.drawing.image import Image as XLImage
-from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
+from drawing_qa.designer_brief import (
+    designer_actions,
+    designer_doc_ref,
+    designer_purpose_groups,
+    designer_title,
+)
 from drawing_qa.dwg_pairing import find_dwg_files, unpaired_dwgs
 from drawing_qa.models import CheckStatus, Confidence, DocumentResult
+from drawing_qa.paths import designer_report_path, next_available_paired_report_path, sanitize_filename_part
 from drawing_qa.preview import preview_size
 from drawing_qa.timing import span as timing_span
 
@@ -27,6 +34,7 @@ STATUS_FILL = {
     CheckStatus.DATE_REGRESSION: PatternFill("solid", fgColor="FFA07A"),
     CheckStatus.SUITABILITY_ERROR: PatternFill("solid", fgColor="F4B183"),
     CheckStatus.PURPOSE_MISMATCH: PatternFill("solid", fgColor="F8CBAD"),
+    CheckStatus.PURPOSE_INCONSISTENT: PatternFill("solid", fgColor="F8CBAD"),
     CheckStatus.DWG_ISSUE: PatternFill("solid", fgColor="BDD7EE"),
     CheckStatus.FILENAME_PARSE_ERROR: PatternFill("solid", fgColor="F4B183"),
     CheckStatus.ERROR: PatternFill("solid", fgColor="D9D9D9"),
@@ -41,6 +49,13 @@ HEADER_FILL = PatternFill("solid", fgColor="1F4E79")
 HEADER_FONT = Font(color="FFFFFF", bold=True, size=10)
 HEADER_ALIGN = Alignment(wrap_text=True, vertical="center", horizontal="center")
 WRAP = Alignment(wrap_text=True, vertical="center")
+CENTER_WRAP = Alignment(wrap_text=True, vertical="center")
+THIN_BORDER = Border(
+    left=Side(style="thin", color="B4B4B4"),
+    right=Side(style="thin", color="B4B4B4"),
+    top=Side(style="thin", color="B4B4B4"),
+    bottom=Side(style="thin", color="B4B4B4"),
+)
 PREVIEW_W, PREVIEW_H = preview_size()
 ROW_HEIGHT = 62
 PREVIEW_COL_WIDTH = round(PREVIEW_W / 7.0, 1)
@@ -373,7 +388,11 @@ def _write_summary(ws: Worksheet, results: list[DocumentResult]) -> None:
     ws["A3"] = "Documents checked"
     ws["B3"] = len(results)
     ws["A4"] = "Start here"
-    ws["B4"] = "Open Review needed first, then the DWG pairing tab if this folder has CAD copies."
+    ws["B4"] = (
+        "Send the designer workbook (or the Designer actions sheet) to CAD. "
+        "Use Review needed for full detail and previews, then DWG pairing if this "
+        "folder has CAD copies."
+    )
     ws["B4"].alignment = Alignment(wrap_text=True)
     ws.merge_cells("B4:F4")
     for coord in ("A2", "B2", "A3", "B3", "A4", "B4"):
@@ -403,9 +422,9 @@ def _write_summary(ws: Worksheet, results: list[DocumentResult]) -> None:
         ws[f"{col}10"].font = HEADER_FONT
         ws[f"{col}10"].fill = HEADER_FILL
     meanings = {
-        CheckStatus.MATCH: "Filename and current title-block values agree; history latest matches current",
+        CheckStatus.MATCH: "Filename and current title-block values agree; history revision/status match the latest row; date matches the first or latest history date",
         CheckStatus.MISMATCH: "Filename disagrees with the current title-block values (column A names the field)",
-        CheckStatus.HISTORY_MISMATCH: "Current title block disagrees with the latest revision-history row",
+        CheckStatus.HISTORY_MISMATCH: "Current revision/status disagrees with the latest history row; the main date must match the first or latest history date",
         CheckStatus.INCOMPLETE: "Layout found, but the document reference could not be read from the title block",
         CheckStatus.UNDETECTED: "No configured layout scored high enough",
         CheckStatus.SPELLING_ERROR: "Possible spelling error detected in title",
@@ -413,6 +432,7 @@ def _write_summary(ws: Worksheet, results: list[DocumentResult]) -> None:
         CheckStatus.DATE_REGRESSION: "Revision dates go backwards (later rev has earlier date)",
         CheckStatus.SUITABILITY_ERROR: "Purpose of issue / suitability is not in the whitelist",
         CheckStatus.PURPOSE_MISMATCH: "P revision with a construction purpose, or C revision with review and comment",
+        CheckStatus.PURPOSE_INCONSISTENT: "No longer raised; off-list purposes are SUITABILITY_ERROR",
         CheckStatus.DWG_ISSUE: "DWG missing, or paired DWG uses -1 instead of .1 (or the reverse)",
         CheckStatus.FILENAME_PARSE_ERROR: "Filename is not ISO 19650; title-block values are still shown",
         CheckStatus.ERROR: "PDF could not be read",
@@ -471,7 +491,219 @@ def _write_summary(ws: Worksheet, results: list[DocumentResult]) -> None:
     ws.column_dimensions["A"].width = 28
     ws.column_dimensions["B"].width = 12
     ws.column_dimensions["C"].width = 80
-    ws.row_dimensions[4].height = 32
+    ws.row_dimensions[4].height = 40
+
+
+DESIGNER_COLUMNS = [
+    ("Drawing number", 38),
+    ("Title", 48),
+    ("What to change", 95),
+]
+DESIGNER_HEADER_ROW = 8
+
+
+def report_project_label(results: list[DocumentResult]) -> str:
+    """Project name from whitelist settings, else the ISO project code."""
+    labels: list[str] = []
+    for result in results:
+        code = (result.filename.parts.get("project") or "").strip()
+        name = (result.purpose_list_name or "").strip()
+        label = name or code
+        if label and label not in labels:
+            labels.append(label)
+    return ", ".join(labels) if labels else "Drawings"
+
+
+def report_stem(results: list[DocumentResult], *, when: datetime | None = None) -> str:
+    """{Project}_{ddmmyy} used for both the main report and the designer sidecar."""
+    when = when or datetime.now()
+    label = sanitize_filename_part(report_project_label(results))
+    return f"{label}_{when.strftime('%d%m%y')}"
+
+
+def default_report_path(
+    folder: Path,
+    results: list[DocumentResult],
+    *,
+    when: datetime | None = None,
+) -> Path:
+    return next_available_paired_report_path(folder, report_stem(results, when=when))
+
+
+def _write_simple_summary(ws: Worksheet, results: list[DocumentResult]) -> int:
+    """Compact counts at the top of a designer sheet. Returns the actions header row."""
+    label = report_project_label(results)
+    when = datetime.now()
+    total = len(results)
+    need = sum(1 for item in results if item.confidence == Confidence.REVIEW)
+    ok = sum(1 for item in results if item.confidence == Confidence.HIGH)
+    title = ws.cell(1, 1, f"Designer actions — {label}")
+    title.font = Font(bold=True, size=12, color="1F4E79")
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=3)
+    rows = (
+        (2, "Project", label),
+        (3, "Date", when.strftime("%d/%m/%y")),
+        (4, "Drawings checked", total),
+        (5, "Need action", need),
+        (6, "OK", ok),
+    )
+    for row, heading, value in rows:
+        key = ws.cell(row, 1, heading)
+        val = ws.cell(row, 2, value)
+        key.font = BODY_FONT
+        val.font = BODY_FONT
+    ws.cell(5, 2).fill = CONF_FILL[Confidence.REVIEW]
+    ws.cell(6, 2).fill = CONF_FILL[Confidence.HIGH]
+    ws.row_dimensions[1].height = 22
+    return DESIGNER_HEADER_ROW
+
+
+def _wrapped_line_count(text: str, col_width: float) -> int:
+    usable = max(int(col_width), 8)
+    lines = 0
+    for paragraph in str(text or "").split("\n"):
+        if not paragraph:
+            lines += 1
+            continue
+        current = 0
+        para_lines = 1
+        for word in paragraph.split(" "):
+            add = len(word) + (1 if current else 0)
+            if current and current + add > usable:
+                para_lines += 1
+                current = len(word)
+            else:
+                current += add
+        lines += para_lines
+    return max(lines, 1)
+
+
+def _designer_row_height(values: list[object], widths: list[float]) -> float:
+    lines = 1
+    for value, width in zip(values, widths, strict=True):
+        lines = max(lines, _wrapped_line_count(str(value or ""), width))
+    return min(max(18, lines * 14.5 + 4), 180)
+
+
+def _apply_designer_cell(cell, *, header: bool = False) -> None:
+    cell.border = THIN_BORDER
+    if header:
+        cell.fill = HEADER_FILL
+        cell.font = HEADER_FONT
+        cell.alignment = HEADER_ALIGN
+        return
+    cell.font = BODY_FONT
+    cell.alignment = CENTER_WRAP
+
+
+def _write_purpose_list(ws: Worksheet, results: list[DocumentResult], start_row: int) -> None:
+    groups = designer_purpose_groups(results)
+    if not groups:
+        return
+    official_any = any(official for _label, _values, official in groups)
+    default_any = any(not official for _label, _values, official in groups)
+    heading_text = "Approved purposes of issue"
+    if official_any and not default_any:
+        note_text = (
+            "Official project list. Use a value from this list. "
+            "The rows above do not pick the purpose for you."
+        )
+    elif default_any and not official_any:
+        note_text = (
+            "Default whitelist for projects without their own list. "
+            "Use a value from this list. The rows above do not pick the purpose for you."
+        )
+    else:
+        note_text = (
+            "Project lists are labelled below. Drawings with no project list "
+            "use the default approved list. "
+            "The rows above do not pick the purpose for you."
+        )
+    row = start_row
+    title = ws.cell(row, 1, heading_text)
+    title.font = Font(bold=True, size=10, color="1F4E79")
+    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=3)
+    row += 1
+    note = ws.cell(row, 1, note_text)
+    note.font = BODY_FONT
+    note.alignment = Alignment(wrap_text=True, vertical="center")
+    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=3)
+    ws.row_dimensions[row].height = 32
+    row += 1
+    for label, values, _official in groups:
+        heading = ws.cell(row, 1, label)
+        heading.font = Font(bold=True, size=10)
+        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=3)
+        row += 1
+        for value in values:
+            cell = ws.cell(row, 1, value)
+            cell.font = BODY_FONT
+            cell.alignment = CENTER_WRAP
+            ws.row_dimensions[row].height = 18
+            row += 1
+        row += 1
+
+
+def _write_designer_sheet(
+    ws: Worksheet,
+    review: list[DocumentResult],
+    all_results: list[DocumentResult],
+) -> None:
+    """Plain-language actions for designers — same rows as Review needed, no previews."""
+    widths = [width for _name, width in DESIGNER_COLUMNS]
+    for col, (_name, width) in enumerate(DESIGNER_COLUMNS, start=1):
+        ws.column_dimensions[get_column_letter(col)].width = width
+    ws.sheet_view.showGridLines = False
+    ws.sheet_properties.tabColor = "548235"
+
+    header_row = _write_simple_summary(ws, all_results)
+    for col, (name, _width) in enumerate(DESIGNER_COLUMNS, start=1):
+        _apply_designer_cell(ws.cell(header_row, col, name), header=True)
+    ws.row_dimensions[header_row].height = 22
+    ws.freeze_panes = f"A{header_row + 1}"
+
+    if not review:
+        empty_row = header_row + 1
+        ws.cell(empty_row, 1, "(none)")
+        ws.cell(empty_row, 3, "No drawings need designer action.")
+        for col in range(1, 4):
+            _apply_designer_cell(ws.cell(empty_row, col))
+        ws.row_dimensions[empty_row].height = 22
+        _write_purpose_list(ws, all_results, empty_row + 2)
+        return
+
+    for result in review:
+        actions = designer_actions(result)
+        values = [designer_doc_ref(result), designer_title(result), actions]
+        row_idx = ws.max_row + 1
+        if row_idx <= header_row:
+            row_idx = header_row + 1
+        for col, value in enumerate(values, start=1):
+            cell = ws.cell(row_idx, col, value)
+            _apply_designer_cell(cell)
+            status_fill = STATUS_FILL.get(result.status)
+            if result.status == CheckStatus.MULTIPLE_ISSUES:
+                status_fill = STATUS_FILL[CheckStatus.MULTIPLE_ISSUES]
+            if col == 1 and status_fill:
+                cell.fill = status_fill
+        ws.row_dimensions[row_idx].height = _designer_row_height(values, widths)
+
+    last_data = ws.max_row
+    last = get_column_letter(len(DESIGNER_COLUMNS))
+    ws.auto_filter.ref = f"A{header_row}:{last}{last_data}"
+    _write_purpose_list(ws, all_results, last_data + 2)
+
+
+def write_designer_report(results: list[DocumentResult], output: Path) -> Path:
+    """Single-tab workbook for email: simple summary + designer actions."""
+    output.parent.mkdir(parents=True, exist_ok=True)
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Designer actions"
+    review = [item for item in results if item.confidence == Confidence.REVIEW]
+    _write_designer_sheet(ws, review, results)
+    wb.save(output)
+    return output
 
 
 def write_report(results: list[DocumentResult], output: Path) -> Path:
@@ -490,6 +722,8 @@ def write_report(results: list[DocumentResult], output: Path) -> Path:
         ]
         high = [item for item in results if item.confidence == Confidence.HIGH]
 
+        designer_sheet = wb.create_sheet("Designer actions")
+        _write_designer_sheet(designer_sheet, review, results)
         review_sheet = wb.create_sheet("Review needed")
         _write_rows(review_sheet, review, keep)
         dwg_sheet = wb.create_sheet("DWG pairing")
@@ -501,4 +735,5 @@ def write_report(results: list[DocumentResult], output: Path) -> Path:
 
     with timing_span("report_save"):
         wb.save(output)
+        write_designer_report(results, designer_report_path(output))
     return output

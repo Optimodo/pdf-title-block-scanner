@@ -3,8 +3,6 @@
 # Copy this file (with settings.yaml) into a config\ folder next to TBCheck.exe
 # to override the bundled list. Matching ignores case, extra spaces, and treats
 # "&" as "and".
-# P revisions should use S3 review-and-comment wording; C revisions a construction
-# purpose. Crossed pairings are flagged as PURPOSE_MISMATCH.
 #
 # Starting point: ISO 19650-2 UK National Annex Table NA.1
 # (UK BIM Framework Guidance Part C). 2021 NA wording is also listed where it
@@ -16,6 +14,24 @@ fail_on_error: true
 # entry below, accept it. Set false to require a full code + description match.
 accept_code_only: true
 
+# P vs C pairing (PURPOSE_MISMATCH).
+# A title-block status is "review" or "construction" if it matches a row here
+# (same normalisation as values). A code listed alone (S3) classifies every
+# status with that code, including code-only. Statuses in neither list are
+# not checked for P/C pairing — so S4 stage approval / building control pass.
+# P + construction, or C + review, is flagged.
+purpose:
+  enabled: true
+  review:
+    - S3
+  construction:
+    - A - Construction
+    - A - For Construction
+    - S4 - Construction
+    - S4 - For Construction
+    - S5 - Construction
+    - S5 - For Construction
+
 values:
   # --- ISO 19650-2 NA.1: Work in progress ---
   - S0 - Initial status
@@ -24,15 +40,20 @@ values:
   # --- ISO 19650-2 NA.1: Shared (non-contractual) ---
   - S1 - Suitable for coordination
   - S1 - Coordination
+  - S1 - For Coordination
   - S2 - Suitable for information
   - S2 - Suitable for information/reference
   - S2 - Information
   - S2 - Information/reference
+  - S2 - For Information
   - S3 - Suitable for review and comment
   - S3 - Review and comment
   - S3 - Review & Comment
+  - S3 - Review & Comments
+  - S3 - For Review & Comment
   - S4 - Suitable for stage approval
   - S4 - Stage approval
+  - S4 - For Stage Approval
   - S4 - Suitable for review and authorisation
   - S4 - Suitable for review and authorization
   - S4 - Review and authorisation
@@ -90,5 +111,77 @@ values:
   - A - For Construction
   - S2 - Suitable for tender
   - S4 - Construction
+  - S4 - For Construction
+  - S4 - Suitable for building control approval
+  - S4 - For building control approval
   - S5 - Construction
+  - S5 - For Construction
+
+# Optional per-project lists keyed by the ISO 19650 project code (first filename
+# field). When a drawing's project is listed, only that list is used for checking
+# and Designer actions. Otherwise suggested: is the whitelist (not values:).
+#
+# suggested: is the default CAD dropdown for every project that has no entry
+# under projects:. Copied from Oval C+D (R459) until a better default is agreed.
+# values: remains the ISO 19650-2 NA.1 catalogue for reference / custom configs.
+suggested:
+  - A - Contractual
+  - AB - As Builts
+  - D2 - For Tender
+  - P1 - Preliminary Issue
+  - S1 - For Coordination
+  - S2 - For Information
+  - S2 - Information
+  - S3 - For Review & Comment
+  - S3 - Review & Comment
+  - S4 - For Stage Approval
+  - S4 - Stage Approval
+  - S5 - For Construction
+  - S5 - Construction
+
+projects:
+  R456:
+    name: Trillium
+    values:
+      - A - Contractual
+      - AB - As Builts
+      - D2 - For Tender
+      - P1 - Preliminary Issue
+      - S1 - For Coordination
+      - S2 - For Information
+      - S2 - Information
+      - S3 - For Review & Comment
+      - S3 - Review & Comment
+      - S4 - For Stage Approval
+      - S4 - Stage Approval
+      - S5 - For Construction
+      - S5 - Construction
+  R459:
+    name: Oval C+D
+    values:
+      - A - Contractual
+      - AB - As Builts
+      - D2 - For Tender
+      - P1 - Preliminary Issue
+      - S1 - For Coordination
+      - S2 - For Information
+      - S2 - Information
+      - S3 - For Review & Comment
+      - S3 - Review & Comment
+      - S4 - For Stage Approval
+      - S4 - Stage Approval
+      - S5 - For Construction
+      - S5 - Construction
+  J106309:
+    name: Barking Riverside
+    values:
+      - CR - Construction Record
+      - S2 - Suitable for Information
+      - S2 - Information
+      - S2 - For Information
+      - S2 - Suitable for Tender
+      - S3 - Suitable for Review and Comment
+      - S3 - Review and Comment
+      - S4 - Suitable for Building Control Approval
+      - S4 - Suitable for Other Stage Approvals
 

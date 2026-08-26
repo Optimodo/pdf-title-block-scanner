@@ -2,9 +2,12 @@ from pathlib import Path
 
 from drawing_qa.paths import (
     REPORT_NAME,
+    designer_report_path,
     is_versioned_report_name,
+    next_available_paired_report_path,
     next_available_report_path,
     resolve_config_dir,
+    sanitize_filename_part,
 )
 
 
@@ -23,6 +26,21 @@ def test_versioned_report_names():
     assert is_versioned_report_name("TBCheckReport.xlsx")
     assert is_versioned_report_name("TBCheckReport-12.xlsx")
     assert not is_versioned_report_name("other.xlsx")
+
+
+def test_sanitize_filename_part_strips_illegal_chars():
+    assert sanitize_filename_part('Oval C+D') == "Oval C+D"
+    assert sanitize_filename_part('R459: Oval*C+D') == "R459 Oval C+D"
+    assert sanitize_filename_part("   ") == "Drawings"
+
+
+def test_paired_report_skips_existing_designer_sidecar(tmp_path: Path):
+    (tmp_path / "Oval C+D_260826.xlsx").write_bytes(b"main")
+    first = next_available_paired_report_path(tmp_path, "Oval C+D_260826")
+    assert first.name == "Oval C+D_260826-1.xlsx"
+    designer_report_path(tmp_path / "Free_260826.xlsx").write_bytes(b"side")
+    second = next_available_paired_report_path(tmp_path, "Free_260826")
+    assert second.name == "Free_260826-1.xlsx"
 
 
 def test_sidecar_config_wins(tmp_path: Path, config_dir: Path):

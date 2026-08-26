@@ -3,7 +3,7 @@ from pathlib import Path
 from drawing_qa.checker import check_pdf, check_paths, iter_pdfs
 from drawing_qa.config_loader import load_config
 from drawing_qa.models import CheckStatus, Confidence
-from drawing_qa.report import write_report
+from drawing_qa.report import DESIGNER_HEADER_ROW, write_report
 from tests.pdf_fixtures import (
     write_bottom_right_pdf,
     write_bottom_strip_pdf,
@@ -110,14 +110,42 @@ def test_excel_report_created(tmp_path: Path, config_dir: Path):
     wb = load_workbook(output)
     assert set(wb.sheetnames) == {
         "Summary",
+        "Designer actions",
         "Review needed",
         "DWG pairing",
         "High confidence",
         "All documents",
     }
+    assert wb.sheetnames[1] == "Designer actions"
     assert wb["All documents"].max_row == 3  # header + 2 rows
     assert wb["High confidence"].max_row == 2
     assert wb["Review needed"].max_row == 2
+    designer = wb["Designer actions"]
+    assert designer.max_row >= wb["Review needed"].max_row
+    assert designer["A1"].value.startswith("Designer actions")
+    assert designer["A2"].value == "Project"
+    assert designer["A5"].value == "Need action"
+    assert designer.cell(DESIGNER_HEADER_ROW, 1).value == "Drawing number"
+    assert designer.cell(DESIGNER_HEADER_ROW, 2).value == "Title"
+    assert designer.cell(DESIGNER_HEADER_ROW, 3).value == "What to change"
+    assert not designer._images
+    first = DESIGNER_HEADER_ROW + 1
+    assert designer.cell(first, 1).value == "ABC-WXY-ZZ-00-DR-A-0102"
+    assert designer.cell(first, 2).value == "Roof Plan"
+    assert "revision" in (designer.cell(first, 3).value or "").lower()
+    assert "C02" in (designer.cell(first, 3).value or "")
+    assert "C01" in (designer.cell(first, 3).value or "")
+    assert designer.cell(first, 1).alignment.vertical == "center"
+    assert designer.cell(first, 3).border.left.style == "thin"
+    assert designer.cell(first, 3).alignment.wrap_text is True
+    purpose_cells = [
+        str(cell.value)
+        for row in designer.iter_rows(min_col=1, max_col=1, values_only=False)
+        for cell in row
+        if cell.value
+    ]
+    assert "Approved purposes of issue" in purpose_cells
+    assert "S5 - For Construction" in purpose_cells
     assert wb["All documents"]._images
     data = wb["All documents"]
     assert data["F1"].value == "Filename title"
@@ -164,6 +192,28 @@ def test_history_latest_used_not_older_rows(tmp_path: Path, config_dir: Path):
     assert result.preview_png is None  # preview.all_files is false; MATCH rows skip crops
 
 
+def test_history_accepts_original_issue_date_in_title_block(tmp_path: Path, config_dir: Path):
+    pdf = write_bottom_right_pdf(
+        tmp_path / "ABC-WXY-ZZ-00-DR-A-0001-P03.pdf",
+        document_reference="ABC-WXY-ZZ-00-DR-A-0001",
+        title="Ground Floor GA",
+        revision="P03",
+        date="12.01.24",
+        suitability="S4",
+        history=[
+            ("P01", "12.01.24", "First issue"),
+            ("P02", "03.03.24", "Updated for comment"),
+            ("P03", "15.06.24", "S4 Construction"),
+        ],
+    )
+    result = check_pdf(pdf, load_config(config_dir))
+    assert result.titleblock.revision == "P03"
+    assert result.titleblock.date == "12.01.24"
+    assert result.titleblock.history.latest is not None
+    assert result.titleblock.history.latest.revision == "P03"
+    assert result.status == CheckStatus.MATCH
+
+
 def test_history_match_can_skip_preview_when_mismatch_only(tmp_path: Path, config_dir: Path):
     pdf = write_bottom_right_pdf(
         tmp_path / "ABC-WXY-ZZ-00-DR-A-0001-P03.pdf",
@@ -206,6 +256,71 @@ def test_history_mismatch_against_current_rev(tmp_path: Path, config_dir: Path):
     assert result.status == CheckStatus.HISTORY_MISMATCH
     assert result.confidence == Confidence.REVIEW
     assert result.preview_png  # mismatch rows get a preview
+
+
+def test_mixed_purpose_without_project_list_uses_default_whitelist(
+    tmp_path: Path, config_dir: Path
+):
+    pdf1 = write_bottom_right_pdf(
+        tmp_path / "ABC-WXY-ZZ-00-DR-A-0001-C01.pdf",
+        document_reference="ABC-WXY-ZZ-00-DR-A-0001",
+        title="Floor Plan",
+        revision="C01",
+        suitability="S4 - Construction",
+    )
+    pdf2 = write_bottom_right_pdf(
+        tmp_path / "ABC-WXY-ZZ-00-DR-A-0002-C01.pdf",
+        document_reference="ABC-WXY-ZZ-00-DR-A-0002",
+        title="Roof Plan",
+        revision="C01",
+        suitability="S5 - For Construction",
+    )
+    results = check_paths([pdf1, pdf2], load_config(config_dir))
+    by_name = {item.path.name: item for item in results}
+    off_list = by_name["ABC-WXY-ZZ-00-DR-A-0001-C01.pdf"]
+    on_list = by_name["ABC-WXY-ZZ-00-DR-A-0002-C01.pdf"]
+    assert CheckStatus.SUITABILITY_ERROR in off_list.issues
+    assert off_list.preview_png
+    assert CheckStatus.SUITABILITY_ERROR not in on_list.issues
+    assert on_list.status == CheckStatus.MATCH
+    assert on_list.preview_png is None
+    assert all(CheckStatus.PURPOSE_INCONSISTENT not in item.issues for item in results)
+
+
+def test_history_note_does_not_flag_purpose(tmp_path: Path, config_dir: Path):
+    pdf = write_bottom_right_pdf(
+        tmp_path / "ABC-WXY-ZZ-00-DR-A-0001-C01.pdf",
+        document_reference="ABC-WXY-ZZ-00-DR-A-0001",
+        title="Floor Plan",
+        revision="C01",
+        date="15.06.24",
+        suitability="S5 - For Construction",
+        history=[
+            ("P01", "12.01.24", "First issue"),
+            ("C01", "15.06.24", "S3 - Bathroom first fix"),
+        ],
+    )
+    result = check_pdf(pdf, load_config(config_dir))
+    assert result.status == CheckStatus.MATCH
+    assert CheckStatus.HISTORY_MISMATCH not in result.issues
+
+
+def test_history_whitelist_purpose_must_match(tmp_path: Path, config_dir: Path):
+    pdf = write_bottom_right_pdf(
+        tmp_path / "ABC-WXY-ZZ-00-DR-A-0001-C01.pdf",
+        document_reference="ABC-WXY-ZZ-00-DR-A-0001",
+        title="Floor Plan",
+        revision="C01",
+        date="15.06.24",
+        suitability="S5 - For Construction",
+        history=[
+            ("P01", "12.01.24", "First issue"),
+            ("C01", "15.06.24", "S4 - For Stage Approval"),
+        ],
+    )
+    result = check_pdf(pdf, load_config(config_dir))
+    assert result.status == CheckStatus.HISTORY_MISMATCH
+    assert any("S4" in note for note in result.notes)
 
 
 def test_detects_mbs_right_title_block(tmp_path: Path, config_dir: Path):

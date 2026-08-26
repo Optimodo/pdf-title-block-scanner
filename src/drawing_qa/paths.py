@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 REPORT_NAME = "TBCheckReport.xlsx"
+_INVALID_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*]')
 
 
 def is_frozen() -> bool:
@@ -43,6 +44,19 @@ def resolve_config_dir(folder: Path | None = None, override: Path | None = None)
     return bundled_config_dir()
 
 
+def sanitize_filename_part(text: str, fallback: str = "Drawings") -> str:
+    """Strip characters Windows will not allow in a file name."""
+    cleaned = _INVALID_FILENAME_CHARS.sub(" ", text)
+    cleaned = " ".join(cleaned.split())
+    cleaned = cleaned.strip(" .")
+    return cleaned or fallback
+
+
+def designer_report_path(main: Path) -> Path:
+    """Sidecar workbook: {stem}_designer.xlsx next to the main report."""
+    return main.with_name(f"{main.stem}_designer{main.suffix}")
+
+
 def next_available_report_path(folder: Path, filename: str = REPORT_NAME) -> Path:
     """Return name.xlsx, then name-1.xlsx, name-2.xlsx, ... matching mbs-file-tools."""
     folder = folder.resolve()
@@ -56,6 +70,19 @@ def next_available_report_path(folder: Path, filename: str = REPORT_NAME) -> Pat
         candidate = folder / f"{stem}-{n}{suffix}"
         if not candidate.exists():
             return candidate
+        n += 1
+
+
+def next_available_paired_report_path(folder: Path, stem: str) -> Path:
+    """Next {stem}.xlsx that does not collide with an existing designer sidecar."""
+    folder = folder.resolve()
+    n = 0
+    while True:
+        suffix = "" if n == 0 else f"-{n}"
+        main = folder / f"{stem}{suffix}.xlsx"
+        designer = designer_report_path(main)
+        if not main.exists() and not designer.exists():
+            return main
         n += 1
 
 

@@ -90,6 +90,34 @@ def check_pdf(path: Path, config: AppConfig) -> DocumentResult:
     return result
 
 
+def _fill_missing_previews(results: list[DocumentResult], config: AppConfig) -> None:
+    """Render crops for rows that only became review after folder-level checks."""
+    all_files = bool(config.preview and config.preview.all_files)
+    for result in results:
+        if result.preview_png or result.status == CheckStatus.ERROR:
+            continue
+        if result.status == CheckStatus.MATCH and not all_files:
+            continue
+        page = None
+        try:
+            require_pymupdf()
+            import pymupdf
+
+            doc = pymupdf.open(result.path)
+            try:
+                if doc.page_count < 1:
+                    continue
+                page = doc[0]
+                with timing_span("preview"):
+                    result.preview_png = render_preview(page, result.titleblock)
+            finally:
+                if page is not None:
+                    clear_page_word_cache(page)
+                doc.close()
+        except Exception:  # noqa: BLE001 - report can still ship without a crop
+            clear_page_word_cache(page)
+
+
 def check_paths(
     paths: list[Path],
     config: AppConfig,
@@ -121,5 +149,7 @@ def check_paths(
                     result.suggested_filename = standardize_filename(result)
                 else:
                     result.suggested_filename = suggest_filename(result)
+
+            _fill_missing_previews(results, config)
 
     return results

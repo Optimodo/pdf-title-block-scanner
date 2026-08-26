@@ -8,6 +8,7 @@ import yaml
 
 from drawing_qa.models import FieldSpec, HistorySpec, RectFrac, TitleBlockLayout
 from drawing_qa.paths import bundled_config_dir, resolve_config_dir
+from drawing_qa.suitability import DEFAULT_PURPOSE_CONSTRUCTION, DEFAULT_PURPOSE_REVIEW
 from drawing_qa.timing import configure as configure_timing
 
 
@@ -25,6 +26,14 @@ class SuitabilityCheckConfig:
     fail_on_error: bool = True
     accept_code_only: bool = True
     values: list[str] = field(default_factory=list)
+    purpose_enabled: bool = True
+    purpose_review: list[str] = field(default_factory=lambda: list(DEFAULT_PURPOSE_REVIEW))
+    purpose_construction: list[str] = field(
+        default_factory=lambda: list(DEFAULT_PURPOSE_CONSTRUCTION)
+    )
+    projects: dict[str, list[str]] = field(default_factory=dict)
+    project_names: dict[str, str] = field(default_factory=dict)
+    suggested: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -102,6 +111,33 @@ def load_layout(path: Path) -> TitleBlockLayout:
     )
 
 
+def _project_suitability_lists(raw: dict) -> tuple[dict[str, list[str]], dict[str, str]]:
+    """Map ISO project codes (R459) to optional purpose-of-issue lists and names."""
+    block = raw.get("projects") or {}
+    if not isinstance(block, dict):
+        return {}, {}
+    projects: dict[str, list[str]] = {}
+    names: dict[str, str] = {}
+    for key, spec in block.items():
+        code = str(key).strip().upper()
+        if not code:
+            continue
+        name = ""
+        if isinstance(spec, dict):
+            items = spec.get("values") or []
+            name = str(spec.get("name") or "").strip()
+        elif isinstance(spec, list):
+            items = spec
+        else:
+            continue
+        values = [str(item).strip() for item in items if str(item).strip()]
+        if values:
+            projects[code] = values
+            if name:
+                names[code] = name
+    return projects, names
+
+
 def load_config(config_dir: Path | None = None) -> AppConfig:
     if config_dir is None:
         config_dir = resolve_config_dir()
@@ -147,12 +183,43 @@ def load_config(config_dir: Path | None = None) -> AppConfig:
     suitability_raw = {}
     if suitability_path.is_file():
         suitability_raw = yaml.safe_load(suitability_path.read_text(encoding="utf-8")) or {}
-    values = suitability_raw.get("values") or []
+    values = [str(item).strip() for item in (suitability_raw.get("values") or []) if str(item).strip()]
+    projects, project_names = _project_suitability_lists(suitability_raw)
+    suggested = [
+        str(item).strip()
+        for item in (suitability_raw.get("suggested") or [])
+        if str(item).strip()
+    ]
+    if not suggested:
+        suggested = list(projects.get("R459") or [])
+    if "purpose" in suitability_raw:
+        purpose_raw = suitability_raw.get("purpose") or {}
+        purpose_enabled = bool(purpose_raw.get("enabled", True))
+        purpose_review = [
+            str(item).strip()
+            for item in (purpose_raw.get("review") or [])
+            if str(item).strip()
+        ]
+        purpose_construction = [
+            str(item).strip()
+            for item in (purpose_raw.get("construction") or [])
+            if str(item).strip()
+        ]
+    else:
+        purpose_enabled = True
+        purpose_review = list(DEFAULT_PURPOSE_REVIEW)
+        purpose_construction = list(DEFAULT_PURPOSE_CONSTRUCTION)
     suitability_check = SuitabilityCheckConfig(
         enabled=bool(suitability_raw.get("enabled", True)),
         fail_on_error=bool(suitability_raw.get("fail_on_error", True)),
         accept_code_only=bool(suitability_raw.get("accept_code_only", True)),
-        values=[str(item).strip() for item in values if str(item).strip()],
+        values=values,
+        purpose_enabled=purpose_enabled,
+        purpose_review=purpose_review,
+        purpose_construction=purpose_construction,
+        projects=projects,
+        project_names=project_names,
+        suggested=suggested,
     )
 
     timing_cfg = settings.get("timing") or {}

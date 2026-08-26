@@ -144,6 +144,96 @@ def _row_recency(row: HistoryRow) -> tuple:
     return (parsed or date.min, revision_rank(row.revision))
 
 
+def _row_first_issue(row: HistoryRow) -> tuple:
+    # Original issue is the lowest revision rank (P01), even when the printed
+    # date is not a valid calendar date (30.02.26).
+    parsed = parse_date(row.date) if row.date else None
+    return (revision_rank(row.revision), parsed or date.max)
+
+
+def history_first_row(history: RevisionHistory) -> HistoryRow | None:
+    """Oldest dated history row (original issue), else lowest revision rank."""
+    if history.first:
+        return history.first
+    if not history.rows:
+        return None
+    return min(history.rows, key=_row_first_issue)
+
+
+_HISTORY_CHROME = {
+    "REV",
+    "REVISION",
+    "DATE",
+    "DESCRIPTION",
+    "BY",
+    "AMENDMENTS",
+    "PROJECT",
+    "CLIENT",
+    "STATUS",
+    "SUITABILITY",
+}
+
+
+def _is_history_chrome(line: list[Word]) -> bool:
+    label = normalize_label(line_text(line))
+    if not label:
+        return True
+    tokens = label.split()
+    if tokens[0] in _HISTORY_CHROME and not _line_revision(line):
+        return True
+    return label in _HISTORY_CHROME
+
+
+def _description_left(row: HistoryRow) -> float | None:
+    rev = _line_revision(row.words)
+    date_words = [w for w in row.words if DATE_IN_TEXT.search(w.text)]
+    skip = set()
+    if rev is not None:
+        skip.add(id(rev))
+    skip.update(id(word) for word in date_words)
+    desc = [word for word in row.words if id(word) not in skip]
+    if desc:
+        return min(word.x0 for word in desc)
+    if date_words:
+        return max(word.x1 for word in date_words) + 4
+    if rev is not None:
+        return rev.x1 + 4
+    return None
+
+
+def _is_wrapped_description(line: list[Word], prev: HistoryRow) -> bool:
+    """True when this line is a wrapped description under the previous history row."""
+    if _is_history_chrome(line) or _line_revision(line):
+        return False
+    prev_bottom = max(word.y1 for word in prev.words)
+    line_top = min(word.y0 for word in line)
+    if line_top < prev_bottom - 2 or line_top > prev_bottom + 22:
+        return False
+    desc_left = _description_left(prev)
+    if desc_left is None:
+        return False
+    return abs(min(word.x0 for word in line) - desc_left) <= 48
+
+
+def _parse_history_lines(lines: list[list[Word]]) -> list[HistoryRow]:
+    """Parse rows and fold wrapped description lines into the previous row."""
+    parsed: list[HistoryRow] = []
+    for line in lines:
+        row = _parse_row(line)
+        if row:
+            parsed.append(row)
+            continue
+        if not parsed or not _is_wrapped_description(line, parsed[-1]):
+            continue
+        extra = line_text(line).strip()
+        if not extra:
+            continue
+        prev = parsed[-1]
+        prev.description = f"{prev.description} {extra}".strip() if prev.description else extra
+        prev.words.extend(line)
+    return parsed
+
+
 def detect_revision_history(words: list[Word], spec: HistorySpec | None = None) -> RevisionHistory:
     spec = spec or HistorySpec()
     result = RevisionHistory()
@@ -152,11 +242,7 @@ def detect_revision_history(words: list[Word], spec: HistorySpec | None = None) 
     if not heading:
         blob = f" {normalize_label(all_text(words))} "
         heading = any(f" {item} " in blob for item in HISTORY_HEADINGS)
-    parsed: list[HistoryRow] = []
-    for line in words_to_lines(words):
-        row = _parse_row(line)
-        if row:
-            parsed.append(row)
+    parsed = _parse_history_lines(words_to_lines(words))
     if not parsed:
         return result
 
@@ -187,6 +273,7 @@ def detect_revision_history(words: list[Word], spec: HistorySpec | None = None) 
 
     result.rows = cluster
     result.latest = latest
+    result.first = min(cluster, key=_row_first_issue)
     result.bbox = bbox
     if heading_words:
         heading_box = bbox_of(heading_words)

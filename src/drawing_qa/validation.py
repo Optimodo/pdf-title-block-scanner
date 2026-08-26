@@ -44,8 +44,10 @@ def check_duplicates(results: list[DocumentResult]) -> list[DocumentResult]:
 
 def check_date_regression(results: list[DocumentResult]) -> list[DocumentResult]:
     """Check for date regression within revision history.
-    
-    Validates that later revisions have later or equal dates.
+
+    Later revisions must have later or equal dates within the P series and
+    within the C series. The main title-block date is not compared here
+    (it may be the original issue date or the latest revision date).
     Updates status to DATE_REGRESSION if issues found.
     
     Args:
@@ -85,17 +87,7 @@ def check_date_regression(results: list[DocumentResult]) -> list[DocumentResult]
                         f"is before {prev_row.revision} dated {prev_row.date}"
                     )
                     result.notes.append(note)
-        
-        # Also check current date vs latest history
-        if result.titleblock.date and history.latest and history.latest.date:
-            current_date = parse_date(result.titleblock.date)
-            latest_history_date = parse_date(history.latest.date)
-            
-            if current_date and latest_history_date and current_date < latest_history_date:
-                regression_found = True
-                note = f"Current date {result.titleblock.date} is before latest history date {history.latest.date}"
-                result.notes.append(note)
-        
+
         if regression_found:
             record_issue(result, CheckStatus.DATE_REGRESSION)
     

@@ -5,7 +5,7 @@ from datetime import date, datetime
 
 REV_TOKEN = re.compile(r"^(?:[PC]\d{2}|[A-Z]\d?)$", re.IGNORECASE)
 _PC_REVISION = re.compile(r"^[PC]\d{1,2}$", re.IGNORECASE)
-SUITABILITY_TOKEN = re.compile(r"^(?:S[0-7]|A[0-9]|B[0-9]|CR)$", re.IGNORECASE)
+SUITABILITY_TOKEN = re.compile(r"^(?:S[0-7]|A[0-9]|B[0-9]|CR|AB|D2|P1)$", re.IGNORECASE)
 # CAD fonts sometimes emit Cyrillic letters that look like Latin C/P in C01/P01.
 _LATIN_LOOKALIKES = str.maketrans(
     {
@@ -33,31 +33,6 @@ _LATIN_LOOKALIKES = str.maketrans(
         "\u0445": "X",
     }
 )
-DATE_TOKEN = re.compile(
-    r"^("
-    r"\d{1,2}[./\-]\d{1,2}[./\-]\d{2,4}"
-    r"|\d{4}-\d{1,2}-\d{1,2}"
-    r"|\d{1,2}\s*[A-Za-z]{3,9}\s*\d{2,4}"
-    r")$"
-)
-DATE_IN_TEXT = re.compile(
-    r"(\d{1,2}[./\-]\d{1,2}[./\-]\d{2,4}"
-    r"|\d{4}-\d{1,2}-\d{1,2}"
-    r"|\d{1,2}\s+[A-Za-z]{3,9}\s+\d{2,4})",
-    re.IGNORECASE,
-)
-SUITABILITY_IN_TEXT = re.compile(
-    r"\b(S[0-7]|A[0-9]|B[0-9]|CR)\b",
-    re.IGNORECASE,
-)
-# Cut neighbouring title-block roles out of a suitability capture.
-_SUITABILITY_TAIL = re.compile(
-    r"\b(?:DESIGNED|DRAWN|CHECKED|APPROVED|AUTHORI[SZ]ED|VERIFIED)\b",
-    re.IGNORECASE,
-)
-_TRAILING_INITIALS = re.compile(
-    r"(?:\s+[A-Z](?:\.[A-Z])+\.?|\s+[A-Z]{2,3}\.?)$",
-)
 MONTHS = {
     "JAN": 1,
     "FEB": 2,
@@ -72,6 +47,40 @@ MONTHS = {
     "NOV": 11,
     "DEC": 12,
 }
+# Do not use [A-Za-z]{3,9} here: "S5 Void 20" would be treated as a date.
+_MONTH_WORD = (
+    r"(?:January|February|March|April|May|June|July|August|September|"
+    r"October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)"
+)
+DATE_TOKEN = re.compile(
+    r"^("
+    r"\d{1,2}[./\-]\d{1,2}[./\-]\d{2,4}"
+    r"|\d{4}-\d{1,2}-\d{1,2}"
+    rf"|\d{{1,2}}\s*{_MONTH_WORD}\s*\d{{2,4}}"
+    r")$",
+    re.IGNORECASE,
+)
+DATE_IN_TEXT = re.compile(
+    r"("
+    r"\d{1,2}[./\-]\d{1,2}[./\-]\d{2,4}"
+    r"|\d{4}-\d{1,2}-\d{1,2}"
+    rf"|\d{{1,2}}\s+{_MONTH_WORD}\s+\d{{2,4}}"
+    r")",
+    re.IGNORECASE,
+)
+SUITABILITY_IN_TEXT = re.compile(
+    r"\b(S[0-7]|A[0-9]|B[0-9]|CR|AB|D2|P1)\b",
+    re.IGNORECASE,
+)
+# Cut neighbouring title-block roles out of a suitability capture.
+_SUITABILITY_TAIL = re.compile(
+    r"\b(?:DESIGNED|DRAWN|CHECKED|APPROVED|AUTHORI[SZ]ED|VERIFIED)\b",
+    re.IGNORECASE,
+)
+_TRAILING_INITIALS = re.compile(
+    r"(?:\s+[A-Z](?:\.[A-Z])+\.?|\s+[A-Z]{2,3}\.?)$",
+)
+_SUITABILITY_JUNK = re.compile(r"^(?:\+|VOID|\d+,\d+)$", re.IGNORECASE)
 
 
 def fold_latin_lookalikes(text: str) -> str:
@@ -128,7 +137,8 @@ def extract_suitability(text: str | None) -> str | None:
         return None
     cleaned = fold_latin_lookalikes(text)
     cleaned = DATE_IN_TEXT.sub(" ", cleaned)
-    cleaned = re.sub(r"\b[PC]\d{1,2}\b", " ", cleaned, flags=re.IGNORECASE)
+    # Strip P01/C02 revision tokens, not P1 (used as a purpose-of-issue code).
+    cleaned = re.sub(r"\b[PC]\d{2}\b", " ", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\b[A-Z]\.[A-Z]\.?\b", " ", cleaned)
     tail = _SUITABILITY_TAIL.search(cleaned)
     if tail:
@@ -150,6 +160,15 @@ def extract_suitability(text: str | None) -> str | None:
         remainder = " ".join(tok for tok in tokens if tok.upper() != code)
     remainder = re.sub(r"[\s\-–:/]+", " ", remainder).strip(" -–:")
     remainder = _TRAILING_INITIALS.sub("", remainder).strip(" -–:")
+    # Overlapping CAD text sometimes repeats the code (S5 FOR CONSTRUCTION S5).
+    tokens = [
+        token
+        for token in remainder.split()
+        if not _SUITABILITY_JUNK.fullmatch(token)
+    ]
+    while tokens and tokens[-1].upper() == code:
+        tokens.pop()
+    remainder = " ".join(tokens).strip(" -–:")
     if remainder:
         return f"{code} - {remainder}"
     return code
@@ -182,7 +201,7 @@ def parse_date(value: str | None) -> date | None:
                 return date(year, day, month)
             except ValueError:
                 return None
-    match = re.fullmatch(r"(\d{1,2})\s*([A-Za-z]{3,9})\s*(\d{2,4})", text)
+    match = re.fullmatch(rf"(\d{{1,2}})\s*({_MONTH_WORD})\s*(\d{{2,4}})", text, re.IGNORECASE)
     if match:
         month = MONTHS.get(match.group(2)[:3].upper())
         if not month:
@@ -200,13 +219,35 @@ def parse_date(value: str | None) -> date | None:
         return None
 
 
+def date_key(value: str | None) -> tuple[int, int, int] | None:
+    """Year, month, day for comparison, including invalid calendar dates such as 30.02.26."""
+    if not value:
+        return None
+    parsed = parse_date(value)
+    if parsed:
+        return (parsed.year, parsed.month, parsed.day)
+    text = value.strip()
+    match = re.fullmatch(r"(\d{1,2})[./\-](\d{1,2})[./\-](\d{2,4})", text)
+    if not match:
+        found = DATE_IN_TEXT.search(text)
+        if found and found.group(0) != text:
+            return date_key(found.group(0))
+        return None
+    day, month, year = int(match.group(1)), int(match.group(2)), _year(match.group(3))
+    if month > 12 and day <= 12:
+        day, month = month, day
+    if month < 1 or day < 1:
+        return None
+    return (year, month, day)
+
+
 def dates_equal(left: str | None, right: str | None) -> bool | None:
     if not left or not right:
         return None
-    a, b = parse_date(left), parse_date(right)
+    a, b = date_key(left), date_key(right)
     if a and b:
         return a == b
-    return re.sub(r"\s+", "", left).upper() == re.sub(r"\s+", "", right).upper()
+    return re.sub(r"[\s./\-]", "", left).upper() == re.sub(r"[\s./\-]", "", right).upper()
 
 
 def suitability_code(value: str | None) -> str | None:

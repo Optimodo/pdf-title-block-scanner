@@ -16,6 +16,13 @@ def test_parse_uk_and_iso_dates():
     assert parse_date("2024-06-15") == parse_date("15 Jun 2024")
 
 
+def test_invalid_calendar_dates_still_compare_equal():
+    from drawing_qa.tokens import dates_equal
+
+    assert dates_equal("30.02.26", "30/02/2026") is True
+    assert dates_equal("30.02.26", "24.03.26") is False
+
+
 def test_suitability_code():
     assert suitability_code("S4 - Construction") == "S4"
     assert suitability_code("S3 Review and Comment") == "S3"
@@ -82,6 +89,17 @@ def test_extract_suitability_keeps_description_before_or_after_code():
     assert extract_suitability("C01 01.06.2026 A - For Construction MT") == (
         "A - For Construction"
     )
+    assert extract_suitability("+ CONSTRUCTION S5 Void 20,25") == "S5 - CONSTRUCTION"
+    assert extract_suitability("+ Review & Comment S3 Void 20,25") == (
+        "S3 - Review & Comment"
+    )
+
+
+def test_date_in_text_does_not_treat_void_notes_as_dates():
+    from drawing_qa.tokens import DATE_IN_TEXT
+
+    assert DATE_IN_TEXT.search("S5 Void 20,25") is None
+    assert DATE_IN_TEXT.search("15 Jun 2024") is not None
 
 
 def test_history_picks_latest_not_first_row():
@@ -102,6 +120,9 @@ def test_history_picks_latest_not_first_row():
     assert history.latest is not None
     assert history.latest.revision == "P03"
     assert history.latest.date == "15.06.24"
+    assert history.first is not None
+    assert history.first.revision == "P01"
+    assert history.first.date == "12.01.24"
     assert len(history.rows) == 3
 
 
@@ -134,3 +155,40 @@ def test_history_picks_latest_when_newest_is_on_top():
     history = detect_revision_history(words)
     assert history.latest is not None
     assert history.latest.revision == "P03"
+    assert history.first is not None
+    assert history.first.revision == "P01"
+    assert history.first.date == "12.01.24"
+
+
+def test_history_first_uses_p01_when_date_is_not_a_real_calendar_day():
+    words = [
+        _w(10, 30, "C01"),
+        _w(50, 30, "06.08.26"),
+        _w(10, 50, "P02"),
+        _w(50, 50, "24.03.26"),
+        _w(10, 70, "P01"),
+        _w(50, 70, "30.02.26"),
+        _w(10, 90, "Amendments", 60),
+    ]
+    history = detect_revision_history(words)
+    assert history.first is not None
+    assert history.first.revision == "P01"
+    assert history.first.date == "30.02.26"
+
+
+def test_history_folds_wrapped_description_onto_previous_row():
+    words = [
+        _w(10, 30, "P02"),
+        _w(50, 30, "24.03.26"),
+        _w(120, 30, "Bulkhead"),
+        _w(120, 42, "Lighting"),
+        _w(180, 42, "updated"),
+        _w(10, 60, "P01"),
+        _w(50, 60, "12.01.24"),
+        _w(120, 60, "First"),
+        _w(10, 80, "Amendments", 60),
+    ]
+    history = detect_revision_history(words)
+    assert [row.revision for row in history.rows] == ["P02", "P01"]
+    p02 = next(row for row in history.rows if row.revision == "P02")
+    assert "Lighting" in (p02.description or "")

@@ -1,8 +1,12 @@
+from datetime import datetime
 from pathlib import Path
 
 from drawing_qa.cli import main
-from drawing_qa.paths import REPORT_NAME
 from tests.pdf_fixtures import write_bottom_right_pdf
+
+
+def _abc_report_stem() -> str:
+    return f"ABC_{datetime.now().strftime('%d%m%y')}"
 
 
 def test_cli_check_writes_report(tmp_path: Path, config_dir: Path):
@@ -27,6 +31,7 @@ def test_cli_check_writes_report(tmp_path: Path, config_dir: Path):
     )
     assert code == 0
     assert output.is_file()
+    assert (tmp_path / "out_designer.xlsx").is_file()
 
 
 def test_cli_inspect_writes_crops(tmp_path: Path, config_dir: Path):
@@ -63,7 +68,9 @@ def test_auto_check_uses_program_folder(tmp_path: Path, monkeypatch):
     monkeypatch.setattr("drawing_qa.cli.app_dir", lambda: tmp_path)
     code = main(["--no-pause"])
     assert code == 0
-    assert (tmp_path / REPORT_NAME).is_file()
+    stem = _abc_report_stem()
+    assert (tmp_path / f"{stem}.xlsx").is_file()
+    assert (tmp_path / f"{stem}_designer.xlsx").is_file()
 
 
 def test_auto_check_versions_existing_report(tmp_path: Path, monkeypatch):
@@ -73,9 +80,11 @@ def test_auto_check_versions_existing_report(tmp_path: Path, monkeypatch):
         title="Ground Floor GA",
         revision="P01",
     )
-    (tmp_path / REPORT_NAME).write_bytes(b"old")
+    stem = _abc_report_stem()
+    (tmp_path / f"{stem}.xlsx").write_bytes(b"old")
     monkeypatch.setattr("drawing_qa.cli.app_dir", lambda: tmp_path)
     code = main(["--no-pause"])
     assert code == 0
-    assert (tmp_path / "TBCheckReport-1.xlsx").is_file()
-    assert (tmp_path / REPORT_NAME).read_bytes() == b"old"
+    assert (tmp_path / f"{stem}-1.xlsx").is_file()
+    assert (tmp_path / f"{stem}-1_designer.xlsx").is_file()
+    assert (tmp_path / f"{stem}.xlsx").read_bytes() == b"old"

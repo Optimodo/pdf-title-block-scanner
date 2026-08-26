@@ -41,7 +41,7 @@ def _crop_field(page, field: ExtractedField, zoom: float = 2.0) -> Image.Image |
     require_pymupdf()
     import pymupdf
 
-    box = field.bbox.inflate(5)
+    box = field.bbox.inflate(8)
     clip = pymupdf.Rect(box.x0, box.y0, box.x1, box.y1)
     pixmap = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), clip=clip, alpha=False)
     return Image.frombytes("RGB", (pixmap.width, pixmap.height), pixmap.samples)

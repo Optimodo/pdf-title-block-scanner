@@ -222,7 +222,13 @@ def height_of(words: list[Word]) -> float:
 
 # Title values sit under/right of the heading. A wide left band pulls in
 # drawing notes (grid numbers, "2-04", duct sizes) from the sheet body.
-_TIGHT_LEFT_BELOW_LABELS = {"TITLE", "DRAWING TITLE"}
+_TIGHT_LEFT_BELOW_LABELS = {
+    "TITLE",
+    "DRAWING TITLE",
+    "SUITABILITY",
+    "STATUS",
+    "PURPOSE OF ISSUE",
+}
 
 
 def _below(
@@ -380,7 +386,15 @@ def apply_pattern(text: str | None, words: list[Word], pattern: str | None, fiel
         return ExtractedField(name=field_name)
     if field_name == "suitability":
         value = extract_suitability(text) or (text.strip() or None)
-        return ExtractedField(name=field_name, value=value, words=words)
+        kept = words
+        if value:
+            tokens = {token.upper() for token in re.findall(r"[A-Za-z0-9&]+", value)}
+            kept = [
+                word
+                for word in words
+                if re.sub(r"[^A-Za-z0-9&]+", "", word.text).upper() in tokens
+            ] or words
+        return ExtractedField(name=field_name, value=value, words=kept)
     if field_name == "date":
         match = DATE_IN_TEXT.search(text)
         if not match:
@@ -405,6 +419,13 @@ def apply_pattern(text: str | None, words: list[Word], pattern: str | None, fiel
     if not match:
         return ExtractedField(name=field_name)
     value = match.group(0).strip()
+    kept = words
     if field_name == "document_reference" and value:
         value = re.sub(r"(\d+)\s+[.](\d+)\s*$", r"\1.\2", value)
-    return ExtractedField(name=field_name, value=value or None, words=words)
+        compact = re.sub(r"\s+", "", value).upper()
+        kept = [
+            word
+            for word in words
+            if re.sub(r"\s+", "", word.text).upper() in compact
+        ] or words
+    return ExtractedField(name=field_name, value=value or None, words=kept)

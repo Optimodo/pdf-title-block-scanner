@@ -15,12 +15,15 @@ from drawing_qa.models import (
 )
 from drawing_qa.spellcheck import check_spelling, format_spelling_note
 from drawing_qa.suitability import (
+    allowed_values_for_project,
+    project_has_purpose_list,
     revision_purpose_mismatch_note,
     suitability_is_allowed,
     suitability_whitelist_note,
 )
 from drawing_qa.timing import span as timing_span
 from drawing_qa.docref import canonical_doc_ref
+from drawing_qa.history import history_first_row
 from drawing_qa.tokens import dates_equal, suitability_code
 
 
@@ -98,6 +101,37 @@ def _compare_date(left: str | None, right: str | None) -> tuple[bool | None, str
     return matched, "equal" if matched else f"{left} != {right}"
 
 
+def _compare_history_date(
+    current: str | None,
+    first_date: str | None,
+    latest_date: str | None,
+) -> tuple[bool | None, str]:
+    """Accept the main date when it matches the first or latest history date."""
+    if not current and not first_date and not latest_date:
+        return None, "both empty"
+    if not current:
+        return None, "missing on left"
+    if not first_date and not latest_date:
+        return None, "missing on right"
+
+    eq_latest = dates_equal(current, latest_date) if latest_date else False
+    if eq_latest is True:
+        return True, "equals latest history date"
+    eq_first = dates_equal(current, first_date) if first_date else False
+    if eq_first is True:
+        return True, "equals first history date"
+
+    if eq_latest is None and eq_first is not True:
+        if not first_date or eq_first is None:
+            return None, "unparsed"
+
+    first_label = first_date or "(none)"
+    latest_label = latest_date or "(none)"
+    if not first_date or dates_equal(first_date, latest_date) is True:
+        return False, f"{current} != {latest_label}"
+    return False, f"{current} matches neither first {first_label} nor latest {latest_label}"
+
+
 def _layout_undetected(titleblock: TitleBlockFields) -> bool:
     if not titleblock.layout_id:
         return True
@@ -111,7 +145,12 @@ def _history_copied(titleblock: TitleBlockFields, name: str) -> bool:
     return bool(field and field.source == "history")
 
 
-def compare_history(titleblock: TitleBlockFields) -> tuple[list[FieldComparison], bool, list[str]]:
+def compare_history(
+    titleblock: TitleBlockFields,
+    *,
+    allowed_suitability: list[str] | None = None,
+    accept_code_only: bool = True,
+) -> tuple[list[FieldComparison], bool, list[str]]:
     comparisons: list[FieldComparison] = []
     notes: list[str] = []
     latest = titleblock.history.latest if titleblock.history else None
@@ -133,6 +172,32 @@ def compare_history(titleblock: TitleBlockFields) -> tuple[list[FieldComparison]
         if kind == "date":
             matched, detail = _compare_date(current, history_value)
         elif kind == "suitability":
+            if not history_value:
+                comparisons.append(
+                    FieldComparison(
+                        name=f"history_{name}",
+                        filename_value=current,
+                        titleblock_value=history_value,
+                        matched=True,
+                        detail="no purpose of issue on latest history row",
+                    )
+                )
+                return
+            if allowed_suitability and not suitability_is_allowed(
+                history_value,
+                allowed_suitability,
+                accept_code_only=accept_code_only,
+            ):
+                comparisons.append(
+                    FieldComparison(
+                        name=f"history_{name}",
+                        filename_value=current,
+                        titleblock_value=history_value,
+                        matched=True,
+                        detail="latest history row is a note, not a purpose of issue",
+                    )
+                )
+                return
             matched, detail = _compare_suitability(current, history_value)
         else:
             matched, detail = _compare_code(current, history_value)
@@ -147,7 +212,31 @@ def compare_history(titleblock: TitleBlockFields) -> tuple[list[FieldComparison]
         )
 
     add("revision", titleblock.revision, latest.revision, "code")
-    add("date", titleblock.date, latest.date, "date")
+
+    first = history_first_row(titleblock.history)
+    first_date = first.date if first else None
+    if _history_copied(titleblock, "date"):
+        comparisons.append(
+            FieldComparison(
+                name="history_date",
+                filename_value=titleblock.date,
+                titleblock_value=latest.date,
+                matched=True,
+                detail="current field taken from latest history row",
+            )
+        )
+    else:
+        matched, detail = _compare_history_date(titleblock.date, first_date, latest.date)
+        comparisons.append(
+            FieldComparison(
+                name="history_date",
+                filename_value=titleblock.date,
+                titleblock_value=latest.date,
+                matched=matched,
+                detail=detail,
+            )
+        )
+
     add("suitability", titleblock.suitability, latest.suitability, "suitability")
 
     mismatched = False
@@ -157,7 +246,7 @@ def compare_history(titleblock: TitleBlockFields) -> tuple[list[FieldComparison]
             notes.append(f"History latest revision {item.titleblock_value} != current {item.filename_value}")
         elif item.name == "history_date" and item.matched is False:
             mismatched = True
-            notes.append(f"History latest date {item.titleblock_value} != current {item.filename_value}")
+            notes.append(f"History date: {item.detail}")
         elif item.name == "history_suitability" and item.matched is False:
             mismatched = True
             notes.append(
@@ -170,6 +259,9 @@ def compare_document(
     filename: FilenameFields,
     titleblock: TitleBlockFields,
     rules: dict[str, str],
+    *,
+    allowed_suitability: list[str] | None = None,
+    accept_code_only: bool = True,
 ) -> tuple[list[FieldComparison], list[FieldComparison], CheckStatus, list[str]]:
     comparisons: list[FieldComparison] = []
     notes: list[str] = []
@@ -232,7 +324,11 @@ def compare_document(
                     f"filename {item.filename_value!r} != title block {item.titleblock_value!r}"
                 )
 
-    history_comps, history_mismatch, history_notes = compare_history(titleblock)
+    history_comps, history_mismatch, history_notes = compare_history(
+        titleblock,
+        allowed_suitability=allowed_suitability,
+        accept_code_only=accept_code_only,
+    )
     notes.extend(history_notes)
 
     if _layout_undetected(titleblock):
@@ -259,8 +355,32 @@ def build_result(
     spell_check_config: SpellCheckConfig | None = None,
     suitability_check_config: SuitabilityCheckConfig | None = None,
 ) -> DocumentResult:
+    allowed: list[str] = []
+    accept_code_only = True
+    if suitability_check_config and suitability_check_config.enabled:
+        project = result.filename.parts.get("project")
+        allowed = allowed_values_for_project(
+            project,
+            suitability_check_config.values,
+            suitability_check_config.projects,
+            suggested=suitability_check_config.suggested,
+        )
+        accept_code_only = suitability_check_config.accept_code_only
+        result.allowed_suitability = list(allowed)
+        official = project_has_purpose_list(project, suitability_check_config.projects)
+        result.purpose_list_official = official
+        if project:
+            result.purpose_list_name = suitability_check_config.project_names.get(
+                project.strip().upper(), ""
+            )
+        result.designer_purpose_values = list(allowed)
+
     comparisons, history_comps, status, notes = compare_document(
-        result.filename, result.titleblock, rules
+        result.filename,
+        result.titleblock,
+        rules,
+        allowed_suitability=allowed or None,
+        accept_code_only=accept_code_only,
     )
     result.comparisons = comparisons
     result.history_comparisons = history_comps
@@ -296,23 +416,34 @@ def build_result(
         suitability_check_config
         and suitability_check_config.enabled
         and result.titleblock.suitability
-    ):
-        if not suitability_is_allowed(
+        and result.allowed_suitability
+        and not suitability_is_allowed(
             result.titleblock.suitability,
-            suitability_check_config.values,
+            result.allowed_suitability,
             accept_code_only=suitability_check_config.accept_code_only,
-        ):
-            result.notes.append(suitability_whitelist_note(result.titleblock.suitability))
-            if suitability_check_config.fail_on_error:
-                record_issue(result, CheckStatus.SUITABILITY_ERROR)
+        )
+    ):
+        result.notes.append(suitability_whitelist_note(result.titleblock.suitability))
+        if suitability_check_config.fail_on_error:
+            record_issue(result, CheckStatus.SUITABILITY_ERROR)
 
-    purpose_note = revision_purpose_mismatch_note(
-        result.titleblock.revision,
-        result.titleblock.suitability,
-    )
-    if purpose_note:
-        result.notes.append(purpose_note)
-        record_issue(result, CheckStatus.PURPOSE_MISMATCH)
+    purpose_enabled = True
+    purpose_review = None
+    purpose_construction = None
+    if suitability_check_config is not None:
+        purpose_enabled = suitability_check_config.purpose_enabled
+        purpose_review = suitability_check_config.purpose_review
+        purpose_construction = suitability_check_config.purpose_construction
+    if purpose_enabled:
+        purpose_note = revision_purpose_mismatch_note(
+            result.titleblock.revision,
+            result.titleblock.suitability,
+            review=purpose_review,
+            construction=purpose_construction,
+        )
+        if purpose_note:
+            result.notes.append(purpose_note)
+            record_issue(result, CheckStatus.PURPOSE_MISMATCH)
 
     finalize_status(result)
     return result

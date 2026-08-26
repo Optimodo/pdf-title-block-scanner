@@ -16,6 +16,7 @@ class CheckStatus(StrEnum):
     DATE_REGRESSION = "DATE_REGRESSION"
     SUITABILITY_ERROR = "SUITABILITY_ERROR"
     PURPOSE_MISMATCH = "PURPOSE_MISMATCH"
+    PURPOSE_INCONSISTENT = "PURPOSE_INCONSISTENT"
     DWG_ISSUE = "DWG_ISSUE"
     FILENAME_PARSE_ERROR = "FILENAME_PARSE_ERROR"
     ERROR = "ERROR"
@@ -196,6 +197,7 @@ class HistoryRow:
 class RevisionHistory:
     rows: list[HistoryRow] = field(default_factory=list)
     latest: HistoryRow | None = None
+    first: HistoryRow | None = None
     bbox: BBox | None = None
     notes: list[str] = field(default_factory=list)
 
@@ -246,6 +248,10 @@ class DocumentResult:
     dwg_files_present: bool = False
     dwg_issue: str | None = None  # missing | sheet_suffix | name_differs
     issues: list[CheckStatus] = field(default_factory=list)
+    allowed_suitability: list[str] = field(default_factory=list)
+    designer_purpose_values: list[str] = field(default_factory=list)
+    purpose_list_official: bool = False
+    purpose_list_name: str = ""
 
     def mismatch_field_labels(self) -> list[str]:
         """Human names of filename vs title-block fields that disagreed."""

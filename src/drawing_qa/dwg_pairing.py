@@ -18,11 +18,23 @@ NAME_DIFFERS = "name_differs"
 
 
 def find_dwg_files(folder: Path) -> list[Path]:
-    """Find all DWG files in a folder."""
-    dwgs = []
-    for ext in (".dwg", ".DWG"):
-        dwgs.extend(folder.glob(f"*{ext}"))
-    return sorted(dwgs)
+    """Find all DWG files in a folder.
+
+    Windows glob is case-insensitive, so ``*.dwg`` and ``*.DWG`` would otherwise
+    count each file twice.
+    """
+    seen: dict[str, Path] = {}
+    try:
+        entries = folder.iterdir()
+    except OSError:
+        return []
+    for path in entries:
+        if not path.is_file() or path.suffix.lower() != ".dwg":
+            continue
+        key = str(path.resolve()).casefold()
+        if key not in seen:
+            seen[key] = path
+    return sorted(seen.values(), key=lambda item: item.name.casefold())
 
 
 def _doc_ref_key(stem: str) -> str | None:

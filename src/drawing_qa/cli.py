@@ -9,14 +9,13 @@ from drawing_qa.config_loader import load_config
 from drawing_qa.detect import crop_region_pixmap, region_debug_text
 from drawing_qa.extract import require_pymupdf
 from drawing_qa.paths import (
-    REPORT_NAME,
     app_dir,
+    designer_report_path,
     is_frozen,
-    next_available_report_path,
     resolve_config_dir,
 )
 from drawing_qa.rename import RenameStats, apply_renames
-from drawing_qa.report import write_report
+from drawing_qa.report import default_report_path, write_report
 from drawing_qa.timing import format_report as format_timing_report, is_enabled as timing_enabled
 
 
@@ -65,7 +64,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--output",
         type=Path,
         default=None,
-        help="Excel report path (default: TBCheckReport.xlsx in the target folder)",
+        help="Excel report path (default: {project}_{ddmmyy}.xlsx in the target folder)",
     )
     check.add_argument(
         "--recursive",
@@ -260,10 +259,11 @@ def run_folder_check(
                 for item in mismatches:
                     item.rename_result = "Not renamed"
 
-    report_path = output if output is not None else next_available_report_path(folder, REPORT_NAME)
+    report_path = output if output is not None else default_report_path(folder, results)
     saved = write_report(results, report_path)
     _print_summary(results)
     print(f"Report: {saved}")
+    print(f"Designer: {designer_report_path(saved)}")
     if timing_enabled():
         print()
         print(format_timing_report())
@@ -283,10 +283,11 @@ def cmd_check(args: argparse.Namespace) -> int:
             print("Renaming file to document-reference_title_revision...")
             stats = apply_renames(results)
             _print_rename_stats(stats)
-        output = args.output or next_available_report_path(target.parent, REPORT_NAME)
+        output = args.output or default_report_path(target.parent, results)
         saved = write_report(results, output)
         _print_summary(results)
         print(f"Report: {saved}")
+        print(f"Designer: {designer_report_path(saved)}")
         if timing_enabled():
             print()
             print(format_timing_report())

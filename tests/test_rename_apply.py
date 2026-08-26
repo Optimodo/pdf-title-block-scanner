@@ -1,10 +1,10 @@
+from datetime import datetime
 from pathlib import Path
 
 from openpyxl import load_workbook
 
 from drawing_qa.cli import main
 from drawing_qa.models import CheckStatus, DocumentResult, FilenameFields, TitleBlockFields
-from drawing_qa.paths import REPORT_NAME
 from drawing_qa.rename import apply_renames
 from drawing_qa.report import write_report
 from tests.pdf_fixtures import write_bottom_right_pdf
@@ -108,7 +108,7 @@ def test_standardize_cli_renames_and_reports(tmp_path: Path, monkeypatch):
     new_name = "ABC-WXY-ZZ-00-DR-A-0001_Ground Floor GA_P01.pdf"
     assert (tmp_path / new_name).is_file()
     assert not (tmp_path / "ABC-WXY-ZZ-00-DR-A-0001-P01.pdf").exists()
-    report = tmp_path / REPORT_NAME
+    report = tmp_path / f"ABC_{datetime.now().strftime('%d%m%y')}.xlsx"
     assert report.is_file()
     wb = load_workbook(report)
     sheet = wb["All documents"]

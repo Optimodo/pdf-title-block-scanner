@@ -40,7 +40,7 @@ def test_detects_duplicate_document_references(tmp_path: Path, config_dir: Path)
 
 
 def test_date_regression_in_history(tmp_path: Path, config_dir: Path):
-    """Test that date mismatches between current and history are detected."""
+    """Main date matching neither first nor latest history date is a history mismatch."""
     pdf = write_bottom_right_pdf(
         tmp_path / "ABC-WXY-ZZ-00-DR-A-0001-P03.pdf",
         document_reference="ABC-WXY-ZZ-00-DR-A-0001",
@@ -50,16 +50,14 @@ def test_date_regression_in_history(tmp_path: Path, config_dir: Path):
         history=[
             ("P01", "15.01.24", "First issue"),
             ("P02", "10.03.24", "Update"),
-            ("P03", "05.05.24", "Final"),  # History date doesn't match current
+            ("P03", "05.05.24", "Final"),
         ],
     )
     
     config = load_config(config_dir)
     result = check_pdf(pdf, config)
     
-    # History mismatch should be detected (current date doesn't match latest history)
     assert result.status == CheckStatus.HISTORY_MISMATCH
-    # Just verify some notes exist about the mismatch
     assert len(result.notes) > 0
 
 
@@ -270,6 +268,24 @@ def test_dwg_report_tab_lists_sheet_suffix_and_missing(tmp_path: Path, config_di
     assert "Missing DWG" in blob
     assert "DWG with no PDF" in blob
     assert "ORPHAN-DWG.dwg" in blob
+    summary = wb["Summary"]
+    dwg_counts = {
+        str(row[0]): row[1]
+        for row in summary.iter_rows(min_col=1, max_col=2, values_only=True)
+        if row[0]
+    }
+    assert dwg_counts["DWGs in folder"] == 2
+
+
+def test_find_dwg_files_counts_each_file_once(tmp_path: Path):
+    from drawing_qa.dwg_pairing import find_dwg_files
+
+    (tmp_path / "sheet-one.dwg").write_text("")
+    (tmp_path / "sheet-two.DWG").write_text("")
+    found = find_dwg_files(tmp_path)
+    assert len(found) == 2
+    names = {path.name.casefold() for path in found}
+    assert names == {"sheet-one.dwg", "sheet-two.dwg"}
 
 
 def test_duplicates_dont_override_serious_issues(tmp_path: Path, config_dir: Path):
@@ -364,3 +380,20 @@ def test_date_regression_does_not_compare_p_series_with_c_series():
     check_date_regression([result])
     finalize_status(result)
     assert CheckStatus.DATE_REGRESSION not in result.issues
+
+
+def test_date_regression_does_not_flag_original_issue_date_in_title_block():
+    from drawing_qa.models import finalize_status
+
+    result = _history_result(
+        [
+            HistoryRow(revision="P03", date="05.05.24"),
+            HistoryRow(revision="P02", date="10.03.24"),
+            HistoryRow(revision="P01", date="15.01.24"),
+        ],
+        current_date="15.01.24",
+    )
+    check_date_regression([result])
+    finalize_status(result)
+    assert CheckStatus.DATE_REGRESSION not in result.issues
+    assert not any("before latest history date" in note for note in result.notes)
