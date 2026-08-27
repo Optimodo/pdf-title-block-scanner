@@ -17,9 +17,15 @@ from drawing_qa.designer_brief import (
     designer_purpose_groups,
     designer_title,
 )
+from drawing_qa.document_list import blocked_uploads
 from drawing_qa.dwg_pairing import find_dwg_files, unpaired_dwgs
 from drawing_qa.models import CheckStatus, Confidence, DocumentResult
-from drawing_qa.paths import designer_report_path, next_available_paired_report_path, sanitize_filename_part
+from drawing_qa.paths import (
+    designer_report_path,
+    document_control_report_path,
+    next_available_paired_report_path,
+    sanitize_filename_part,
+)
 from drawing_qa.preview import preview_size
 from drawing_qa.timing import span as timing_span
 
@@ -36,6 +42,8 @@ STATUS_FILL = {
     CheckStatus.PURPOSE_MISMATCH: PatternFill("solid", fgColor="F8CBAD"),
     CheckStatus.PURPOSE_INCONSISTENT: PatternFill("solid", fgColor="F8CBAD"),
     CheckStatus.DWG_ISSUE: PatternFill("solid", fgColor="BDD7EE"),
+    CheckStatus.PORTAL_REVISION: PatternFill("solid", fgColor="F4B183"),
+    CheckStatus.PORTAL_TITLE: PatternFill("solid", fgColor="F8CBAD"),
     CheckStatus.FILENAME_PARSE_ERROR: PatternFill("solid", fgColor="F4B183"),
     CheckStatus.ERROR: PatternFill("solid", fgColor="D9D9D9"),
     CheckStatus.MULTIPLE_ISSUES: PatternFill("solid", fgColor="C65911"),
@@ -49,7 +57,8 @@ HEADER_FILL = PatternFill("solid", fgColor="1F4E79")
 HEADER_FONT = Font(color="FFFFFF", bold=True, size=10)
 HEADER_ALIGN = Alignment(wrap_text=True, vertical="center", horizontal="center")
 WRAP = Alignment(wrap_text=True, vertical="center")
-CENTER_WRAP = Alignment(wrap_text=True, vertical="center")
+CENTER_WRAP = Alignment(wrap_text=True, vertical="center", horizontal="center")
+LEFT_WRAP = Alignment(wrap_text=True, vertical="center", horizontal="left")
 THIN_BORDER = Border(
     left=Side(style="thin", color="B4B4B4"),
     right=Side(style="thin", color="B4B4B4"),
@@ -434,6 +443,8 @@ def _write_summary(ws: Worksheet, results: list[DocumentResult]) -> None:
         CheckStatus.PURPOSE_MISMATCH: "P revision with a construction purpose, or C revision with review and comment",
         CheckStatus.PURPOSE_INCONSISTENT: "No longer raised; off-list purposes are SUITABILITY_ERROR",
         CheckStatus.DWG_ISSUE: "DWG missing, or paired DWG uses -1 instead of .1 (or the reverse)",
+        CheckStatus.PORTAL_REVISION: "Revision is not the next issue after the portal document list (or not a valid first issue if the drawing is new to the portal)",
+        CheckStatus.PORTAL_TITLE: "Title disagrees with the portal document list",
         CheckStatus.FILENAME_PARSE_ERROR: "Filename is not ISO 19650; title-block values are still shown",
         CheckStatus.ERROR: "PDF could not be read",
         CheckStatus.MULTIPLE_ISSUES: "More than one issue — see Notes and the status list in column A",
@@ -540,12 +551,14 @@ def _write_simple_summary(ws: Worksheet, results: list[DocumentResult]) -> int:
     title = ws.cell(1, 1, f"Designer actions — {label}")
     title.font = Font(bold=True, size=12, color="1F4E79")
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=3)
+    portal = next((item.portal_list_name for item in results if item.portal_list_name), "")
     rows = (
         (2, "Project", label),
         (3, "Date", when.strftime("%d/%m/%y")),
         (4, "Drawings checked", total),
         (5, "Need action", need),
         (6, "OK", ok),
+        (7, "Portal list", portal or "—"),
     )
     for row, heading, value in rows:
         key = ws.cell(row, 1, heading)
@@ -585,7 +598,7 @@ def _designer_row_height(values: list[object], widths: list[float]) -> float:
     return min(max(18, lines * 14.5 + 4), 180)
 
 
-def _apply_designer_cell(cell, *, header: bool = False) -> None:
+def _apply_designer_cell(cell, *, header: bool = False, changes: bool = False) -> None:
     cell.border = THIN_BORDER
     if header:
         cell.fill = HEADER_FILL
@@ -593,7 +606,7 @@ def _apply_designer_cell(cell, *, header: bool = False) -> None:
         cell.alignment = HEADER_ALIGN
         return
     cell.font = BODY_FONT
-    cell.alignment = CENTER_WRAP
+    cell.alignment = LEFT_WRAP if changes else CENTER_WRAP
 
 
 def _write_purpose_list(ws: Worksheet, results: list[DocumentResult], start_row: int) -> None:
@@ -667,7 +680,7 @@ def _write_designer_sheet(
         ws.cell(empty_row, 1, "(none)")
         ws.cell(empty_row, 3, "No drawings need designer action.")
         for col in range(1, 4):
-            _apply_designer_cell(ws.cell(empty_row, col))
+            _apply_designer_cell(ws.cell(empty_row, col), changes=(col == 3))
         ws.row_dimensions[empty_row].height = 22
         _write_purpose_list(ws, all_results, empty_row + 2)
         return
@@ -680,7 +693,7 @@ def _write_designer_sheet(
             row_idx = header_row + 1
         for col, value in enumerate(values, start=1):
             cell = ws.cell(row_idx, col, value)
-            _apply_designer_cell(cell)
+            _apply_designer_cell(cell, changes=(col == 3))
             status_fill = STATUS_FILL.get(result.status)
             if result.status == CheckStatus.MULTIPLE_ISSUES:
                 status_fill = STATUS_FILL[CheckStatus.MULTIPLE_ISSUES]
@@ -706,6 +719,111 @@ def write_designer_report(results: list[DocumentResult], output: Path) -> Path:
     return output
 
 
+DOCCONTROL_COLUMNS = [
+    ("Drawing number", 38),
+    ("Title", 48),
+    ("Current revision", 16),
+    ("Proposed revision", 18),
+    ("Current portal status", 36),
+    ("Please change to", 16),
+]
+DOCCONTROL_HEADER_ROW = 7
+DOCCONTROL_PLEASE_CHANGE = "A, B, or C"
+
+
+def write_document_control_report(
+    results: list[DocumentResult], output: Path
+) -> Path | None:
+    """One-tab workbook for client document control: drawings that cannot be uploaded."""
+    if not any(item.portal_has_status_column for item in results):
+        return None
+    blocked = blocked_uploads(results)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Document control"
+    _write_document_control_sheet(ws, blocked, results)
+    wb.save(output)
+    return output
+
+
+def _write_document_control_sheet(
+    ws: Worksheet,
+    blocked: list[DocumentResult],
+    all_results: list[DocumentResult],
+) -> None:
+    last_col = len(DOCCONTROL_COLUMNS)
+    widths = [width for _name, width in DOCCONTROL_COLUMNS]
+    for col, (_name, width) in enumerate(DOCCONTROL_COLUMNS, start=1):
+        ws.column_dimensions[get_column_letter(col)].width = width
+    ws.sheet_view.showGridLines = False
+    ws.sheet_properties.tabColor = "C65911"
+
+    label = report_project_label(all_results)
+    when = datetime.now()
+    title = ws.cell(1, 1, f"Document control — cannot upload — {label}")
+    title.font = Font(bold=True, size=12, color="1F4E79")
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=last_col)
+    summary = (
+        (2, "Project", label),
+        (3, "Date", when.strftime("%d/%m/%y")),
+        (4, "Need action", len(blocked)),
+    )
+    for row, heading, value in summary:
+        key = ws.cell(row, 1, heading)
+        val = ws.cell(row, 2, value)
+        key.font = BODY_FONT
+        val.font = BODY_FONT
+    ws.cell(4, 2).fill = CONF_FILL[Confidence.REVIEW]
+    note = ws.cell(
+        5,
+        1,
+        "These drawings cannot be uploaded until the portal status is A, B, or C "
+        "so the current issue can be superseded. Proposed revision is the next issue "
+        "after the current portal revision, after any designer corrections.",
+    )
+    note.font = BODY_FONT
+    note.alignment = Alignment(wrap_text=True, vertical="center")
+    ws.merge_cells(start_row=5, start_column=1, end_row=5, end_column=last_col)
+    ws.row_dimensions[1].height = 22
+    ws.row_dimensions[5].height = 32
+
+    header_row = DOCCONTROL_HEADER_ROW
+    for col, (name, _width) in enumerate(DOCCONTROL_COLUMNS, start=1):
+        _apply_designer_cell(ws.cell(header_row, col, name), header=True)
+    ws.row_dimensions[header_row].height = 22
+    ws.freeze_panes = f"A{header_row + 1}"
+
+    if not blocked:
+        empty_row = header_row + 1
+        ws.cell(empty_row, 1, "(none)")
+        ws.cell(empty_row, 5, "No drawings are blocked by portal status.")
+        for col in range(1, last_col + 1):
+            _apply_designer_cell(ws.cell(empty_row, col))
+        ws.row_dimensions[empty_row].height = 22
+        return
+
+    for offset, result in enumerate(blocked):
+        row_idx = header_row + 1 + offset
+        values = [
+            designer_doc_ref(result),
+            designer_title(result),
+            result.portal_revision or "",
+            result.proposed_upload_revision
+            or result.titleblock.revision
+            or result.filename.revision
+            or "",
+            result.portal_status or "(blank)",
+            DOCCONTROL_PLEASE_CHANGE,
+        ]
+        for col, value in enumerate(values, start=1):
+            cell = ws.cell(row_idx, col, value)
+            _apply_designer_cell(cell)
+            if col == 5:
+                cell.fill = CONF_FILL[Confidence.REVIEW]
+        ws.row_dimensions[row_idx].height = _designer_row_height(values, widths)
+
+
 def write_report(results: list[DocumentResult], output: Path) -> Path:
     output.parent.mkdir(parents=True, exist_ok=True)
     wb = Workbook()
@@ -724,6 +842,11 @@ def write_report(results: list[DocumentResult], output: Path) -> Path:
 
         designer_sheet = wb.create_sheet("Designer actions")
         _write_designer_sheet(designer_sheet, review, results)
+        if any(item.portal_has_status_column for item in results):
+            control_sheet = wb.create_sheet("Document control")
+            _write_document_control_sheet(
+                control_sheet, blocked_uploads(results), results
+            )
         review_sheet = wb.create_sheet("Review needed")
         _write_rows(review_sheet, review, keep)
         dwg_sheet = wb.create_sheet("DWG pairing")
@@ -736,4 +859,5 @@ def write_report(results: list[DocumentResult], output: Path) -> Path:
     with timing_span("report_save"):
         wb.save(output)
         write_designer_report(results, designer_report_path(output))
+        write_document_control_report(results, document_control_report_path(output))
     return output

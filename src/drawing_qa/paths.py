@@ -57,6 +57,11 @@ def designer_report_path(main: Path) -> Path:
     return main.with_name(f"{main.stem}_designer{main.suffix}")
 
 
+def document_control_report_path(main: Path) -> Path:
+    """Sidecar workbook: {stem}_document_control.xlsx for client document control."""
+    return main.with_name(f"{main.stem}_document_control{main.suffix}")
+
+
 def next_available_report_path(folder: Path, filename: str = REPORT_NAME) -> Path:
     """Return name.xlsx, then name-1.xlsx, name-2.xlsx, ... matching mbs-file-tools."""
     folder = folder.resolve()
@@ -74,14 +79,15 @@ def next_available_report_path(folder: Path, filename: str = REPORT_NAME) -> Pat
 
 
 def next_available_paired_report_path(folder: Path, stem: str) -> Path:
-    """Next {stem}.xlsx that does not collide with an existing designer sidecar."""
+    """Next {stem}.xlsx that does not collide with existing sidecar workbooks."""
     folder = folder.resolve()
     n = 0
     while True:
         suffix = "" if n == 0 else f"-{n}"
         main = folder / f"{stem}{suffix}.xlsx"
         designer = designer_report_path(main)
-        if not main.exists() and not designer.exists():
+        control = document_control_report_path(main)
+        if not main.exists() and not designer.exists() and not control.exists():
             return main
         n += 1
 

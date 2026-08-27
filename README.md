@@ -17,7 +17,8 @@ For each PDF it:
 2. Detects which configured **title-block layout** the sheet uses.
 3. Reads five current attributes from the title block (not the revision-history table): document reference, title, revision, purpose of issue / suitability, and date.
 4. Parses the **revision history** table separately, takes only the **latest** row, and checks it against the current title-block revision / date / status.
-5. Writes **TBCheckReport.xlsx** with a summary, a Designer actions tab (for sending to CAD), a Review needed tab with previews, a High confidence tab, and tight screenshots of the five detected fields.
+5. Writes an Excel report with a summary, a Designer actions tab (for sending to CAD), a Review needed tab with previews, a High confidence tab, and tight screenshots of the five detected fields.
+6. Optionally cross-checks a client-portal **document list** in the same folder (revision one-up, and title if both sides have one). If none is found, this step is skipped.
 
 Non-ISO filenames are still processed: title-block values are extracted and shown in the report even when the filename cannot supply a document reference.
 
@@ -38,11 +39,33 @@ OCR for scanned PDFs is out of scope for this version. Sheets need a selectable 
 3. Double-click. A console window lists each file, then waits for Enter.
 4. **TBCheck:** if a filename document reference does not match the title block, you can preview and apply a fix (paired DWG files are renamed the same way).
 5. **TBCheckRename:** files are renamed automatically to `{doc-ref}_{title}_{revision}` from the title block; the Excel report lists original names, new names, and rename results.
-6. Open `TBCheckReport.xlsx` in the same folder to review results.
+6. Open the `{project}_{ddmmyy}.xlsx` report in the same folder to review results.
 
-Optional: copy a `config\` folder next to the exe to override bundled title-block layouts and the purpose-of-issue whitelist (`suitability.yaml`). If that folder is missing, the exe uses the files baked into it.
+Optional: copy a `config\` folder next to the exe to override bundled title-block layouts, the purpose-of-issue whitelist (`suitability.yaml`), and portal document-list column names (`document_lists.yaml`). If that folder is missing, the exe uses the files baked into it.
 
 The exe looks at PDFs in **that folder**, not subfolders (unless `--recursive` is specified). It does not use the network.
+
+## Portal document list (optional)
+
+If a client-portal export (Excel or CSV) is in the drawings folder, TBCheck compares each PDF with that list. This is a read-only check; it does not update the portal or any register.
+
+**How the list is chosen**
+
+- Drop the spreadsheet onto `TBCheck.exe` (Windows passes that path as an argument). PDFs are still taken from the folder that contains the exe.
+- Or leave the export in the drawings folder. Names containing Listing, Document List, Asite, 4Project, Export, or Dump are preferred. IRS / Drawing Schedule / TBCheck reports are ignored.
+- Or pass `--document-list path\to\export.xlsx`, or `drawing-qa check path\to\export.xlsx` (PDFs are scanned in that file's folder).
+
+If no usable list is found, the rest of the QA run is unchanged.
+
+**What is checked**
+
+- Drawing already on the portal: this issue must be **one revision up** (P01→P02, C01→C02). Moving from any P revision to **C01** is also allowed. Same revision, skipped numbers (P01→P03), or going backwards is flagged.
+- Drawing not on the portal: first issue should be **P01**. **WCR** also allows **C01** (most of that project skips P and starts at C01).
+- Titles are compared when both the portal list and the title block have one. Wording stays neutral: they should match, so one needs changing.
+
+If the portal list has a workflow/status column, TBCheck also writes `{project}_{ddmmyy}_document_control.xlsx` for the client's document control, and a **Document control** tab in the main workbook. Drag the sidecar into an email. It only lists drawings that **cannot be uploaded** because the issue already on the portal is not status A, B, or C (so it cannot be superseded). Proposed revision is the next issue after the current portal revision — after any designer corrections — so a skipped drawing revision (C01 on the portal, C03 on the sheet) is shown as C02, not C03. The sheet shows a count of those files only, then document reference, title, current revision, proposed revision, and the current portal status with “Please change to A, B, or C”. Drawings that are not on the portal yet, or that are already A/B/C, are omitted. Project-specific status wordings (for example 4Projects “A Proceed”, Asite “A - Authorized and Accepted”, WCR “EA+DM - Status A”, Holloway Park “Construction”) are in `document_lists.yaml`.
+
+Column headers are matched by name (not letter) using [`src/drawing_qa/default_config/document_lists.yaml`](src/drawing_qa/default_config/document_lists.yaml). That file covers 4Projects, Asite, and DocHosting CSV dumps. Per-project `first_revisions`, status maps, and filename search keys live in the same file.
 
 ## Run from source
 
@@ -98,10 +121,11 @@ Typical workflow for a new style:
 
 The workbook has six sheets, plus a separate one-tab designer workbook for email. Send **Designer actions** (or the `_designer.xlsx` file) to the design team. Use **Review needed** when you need the full evidence.
 
-Reports are named `{project}_{ddmmyy}.xlsx` from the project name in `suitability.yaml` (or the ISO project code if there is no name) and today's date. A matching `{project}_{ddmmyy}_designer.xlsx` is written beside it.
+Reports are named `{project}_{ddmmyy}.xlsx` from the project name in `suitability.yaml` (or the ISO project code if there is no name) and today's date. A matching `{project}_{ddmmyy}_designer.xlsx` is written beside it. If a portal document list with a status column was used, `{project}_{ddmmyy}_document_control.xlsx` is written for the client.
 
 - **Summary** — confidence counts, status counts, rename counts when files were renamed, and what each status means
 - **Designer actions** — short counts at the top, then drawing number, title, and plain-language changes for CAD. Same drawings as Review needed; no previews. Purpose-of-issue issues point at the approved list at the bottom of that sheet rather than guessing a status. The `_designer.xlsx` file is this sheet on its own.
+- **Document control** — also a `_document_control.xlsx` file for email. Drawings that cannot be uploaded until the portal status is A, B, or C. Proposed revision is the next portal issue after designer corrections (not a skipped or wrong revision on the drawing).
 - **Review needed** — mismatches, history disagreements, incomplete reads, undetected layouts, parse errors, plus field previews
 - **DWG pairing** — missing CAD copies and `.1` vs `-1` sheet-number differences
 - **High confidence** — filename, current title block, and latest history revision/status agree (main date may be the first or latest history date)
@@ -124,6 +148,9 @@ Each data row is medium height and includes a **preview strip**: five tight crop
 | `DUPLICATE_REFERENCE` | More than one PDF has the same document reference |
 | `SUITABILITY_ERROR` | Purpose of issue is not on the project whitelist (or `suggested:` when the project has no list) |
 | `PURPOSE_MISMATCH` | P revision with a construction purpose, or C revision with a review purpose (`purpose:` in `suitability.yaml`) |
+| `DWG_ISSUE` | DWG missing, or paired DWG uses `-1` instead of `.1` (or the reverse) |
+| `PORTAL_REVISION` | Revision is not the next issue after the portal document list (or not a valid first issue if the drawing is new) |
+| `PORTAL_TITLE` | Title disagrees with the portal document list |
 | `ERROR` | PDF could not be read |
 | `MULTIPLE_ISSUES` | More than one issue; column A lists them all |
 

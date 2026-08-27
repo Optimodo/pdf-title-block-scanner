@@ -7,10 +7,12 @@ from pathlib import Path
 from drawing_qa.checker import check_paths, iter_pdfs
 from drawing_qa.config_loader import load_config
 from drawing_qa.detect import crop_region_pixmap, region_debug_text
+from drawing_qa.document_list import is_spreadsheet
 from drawing_qa.extract import require_pymupdf
 from drawing_qa.paths import (
     app_dir,
     designer_report_path,
+    document_control_report_path,
     is_frozen,
     resolve_config_dir,
 )
@@ -45,6 +47,12 @@ def build_parser() -> argparse.ArgumentParser:
             "from the title block (TBCheckRename). No prompt."
         ),
     )
+    parser.add_argument(
+        "--document-list",
+        type=Path,
+        default=None,
+        help="Client portal document-list Excel/CSV (otherwise scanned in the folder)",
+    )
     sub = parser.add_subparsers(dest="command")
 
     check = sub.add_parser("check", help="Scan PDFs and write an Excel QA report")
@@ -70,6 +78,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--recursive",
         action="store_true",
         help="Include PDFs in subfolders",
+    )
+    check.add_argument(
+        "--document-list",
+        type=Path,
+        default=None,
+        help="Client portal document-list Excel/CSV (otherwise scanned in the folder)",
     )
 
     inspect = sub.add_parser(
@@ -111,6 +125,9 @@ def _print_summary(results) -> None:
         print("  See the DWG pairing tab in the Excel report")
     else:
         print("  DWG pairing: no DWG files in this folder")
+    portal = next((item.portal_list_name for item in results if item.portal_list_name), "")
+    if portal:
+        print(f"  Portal document list: {portal}")
 
 
 def _print_mismatch_summary(results) -> list:
@@ -195,6 +212,42 @@ def _print_rename_stats(stats: RenameStats) -> None:
         print(f"Failed to rename {stats.failed} file(s)")
 
 
+def _take_dropped_document_list(argv: list[str]) -> tuple[list[str], Path | None]:
+    """Pull a dragged-and-dropped spreadsheet out of argv before argparse.
+
+    Windows passes the dropped path as argv[1]. That is not a subcommand, so
+    argparse would otherwise reject it. Subcommands keep their own paths.
+    """
+    if not argv or argv[0] in {"check", "inspect"}:
+        return argv, None
+    remaining: list[str] = []
+    dropped: Path | None = None
+    skip_next = False
+    for item in argv:
+        if skip_next:
+            remaining.append(item)
+            skip_next = False
+            continue
+        if item == "--document-list":
+            remaining.append(item)
+            skip_next = True
+            continue
+        candidate = Path(item)
+        if dropped is None and is_spreadsheet(candidate):
+            dropped = candidate
+            continue
+        remaining.append(item)
+    return remaining, dropped
+
+
+def _print_report_paths(saved: Path) -> None:
+    print(f"Report: {saved}")
+    print(f"Designer: {designer_report_path(saved)}")
+    control = document_control_report_path(saved)
+    if control.is_file():
+        print(f"Document control: {control}")
+
+
 def run_folder_check(
     folder: Path,
     *,
@@ -203,6 +256,7 @@ def run_folder_check(
     recursive: bool = False,
     progress: bool = True,
     standardize_names: bool = False,
+    document_list: Path | None = None,
 ) -> int:
     folder = folder.resolve()
     config_path = resolve_config_dir(folder, config_dir)
@@ -238,7 +292,11 @@ def run_folder_check(
             print(f"         {result.status.value}")
 
     results = check_paths(
-        pdfs, config, standardize=standardize_names, on_pdf=on_pdf
+        pdfs,
+        config,
+        standardize=standardize_names,
+        on_pdf=on_pdf,
+        document_list=document_list,
     )
     if progress:
         print()
@@ -262,8 +320,12 @@ def run_folder_check(
     report_path = output if output is not None else default_report_path(folder, results)
     saved = write_report(results, report_path)
     _print_summary(results)
-    print(f"Report: {saved}")
-    print(f"Designer: {designer_report_path(saved)}")
+    if document_list is not None and not any(item.portal_list_name for item in results):
+        print(
+            f"  Portal document list not used: could not read Doc Ref / Revision "
+            f"columns from {document_list.name}"
+        )
+    _print_report_paths(saved)
     if timing_enabled():
         print()
         print(format_timing_report())
@@ -274,11 +336,24 @@ def run_folder_check(
 
 def cmd_check(args: argparse.Namespace) -> int:
     standardize_names = getattr(args, "standardize_names", False)
+    document_list = getattr(args, "document_list", None)
     target = args.input.resolve() if args.input is not None else app_dir()
+    if target.is_file() and is_spreadsheet(target):
+        return run_folder_check(
+            target.parent,
+            config_dir=args.config_dir,
+            output=args.output,
+            recursive=args.recursive,
+            progress=True,
+            standardize_names=standardize_names,
+            document_list=target,
+        )
     if target.is_file():
         config = load_config(resolve_config_dir(target.parent, args.config_dir))
         pdfs = iter_pdfs(target)
-        results = check_paths(pdfs, config, standardize=standardize_names)
+        results = check_paths(
+            pdfs, config, standardize=standardize_names, document_list=document_list
+        )
         if standardize_names:
             print("Renaming file to document-reference_title_revision...")
             stats = apply_renames(results)
@@ -286,8 +361,7 @@ def cmd_check(args: argparse.Namespace) -> int:
         output = args.output or default_report_path(target.parent, results)
         saved = write_report(results, output)
         _print_summary(results)
-        print(f"Report: {saved}")
-        print(f"Designer: {designer_report_path(saved)}")
+        _print_report_paths(saved)
         if timing_enabled():
             print()
             print(format_timing_report())
@@ -300,6 +374,7 @@ def cmd_check(args: argparse.Namespace) -> int:
         recursive=args.recursive,
         progress=True,
         standardize_names=standardize_names,
+        document_list=document_list,
     )
 
 
@@ -362,7 +437,10 @@ def main(argv: list[str] | None = None) -> int:
             cleaned.append(item)
 
     parser = build_parser()
+    cleaned, dropped_list = _take_dropped_document_list(cleaned)
     args = parser.parse_args(cleaned)
+    if dropped_list is not None and getattr(args, "document_list", None) is None:
+        args.document_list = dropped_list
     if pause_flag is False:
         args.no_pause = True
         args.pause = False
@@ -376,6 +454,7 @@ def main(argv: list[str] | None = None) -> int:
             code = run_folder_check(
                 app_dir(),
                 standardize_names=getattr(args, "standardize_names", False),
+                document_list=getattr(args, "document_list", None),
             )
         elif args.command == "check":
             code = cmd_check(args)

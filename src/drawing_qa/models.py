@@ -18,6 +18,8 @@ class CheckStatus(StrEnum):
     PURPOSE_MISMATCH = "PURPOSE_MISMATCH"
     PURPOSE_INCONSISTENT = "PURPOSE_INCONSISTENT"
     DWG_ISSUE = "DWG_ISSUE"
+    PORTAL_REVISION = "PORTAL_REVISION"
+    PORTAL_TITLE = "PORTAL_TITLE"
     FILENAME_PARSE_ERROR = "FILENAME_PARSE_ERROR"
     ERROR = "ERROR"
     MULTIPLE_ISSUES = "MULTIPLE_ISSUES"
@@ -252,6 +254,14 @@ class DocumentResult:
     designer_purpose_values: list[str] = field(default_factory=list)
     purpose_list_official: bool = False
     purpose_list_name: str = ""
+    portal_revision: str | None = None
+    portal_title: str | None = None
+    portal_list_name: str = ""
+    portal_first_revisions: list[str] = field(default_factory=list)
+    portal_status: str | None = None
+    portal_has_status_column: bool = False
+    portal_blocks_upload: bool = False
+    proposed_upload_revision: str | None = None
 
     def mismatch_field_labels(self) -> list[str]:
         """Human names of filename vs title-block fields that disagreed."""

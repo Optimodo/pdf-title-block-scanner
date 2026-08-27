@@ -335,3 +335,41 @@ def test_history_whitelist_status_must_match_in_designer_actions():
     assert "S5 - For Construction" in text
     assert "must match" in text.lower()
     assert "mixes construction" not in text.lower()
+
+
+def test_portal_revision_tells_designer_the_next_issue():
+    result = _base(filename_rev="P03", titleblock_rev="P03")
+    result.status = CheckStatus.PORTAL_REVISION
+    result.issues = [CheckStatus.PORTAL_REVISION]
+    result.portal_revision = "P01"
+    result.portal_list_name = "Document Listing.xlsx"
+    text = designer_actions(result)
+    assert "portal list" in text.lower()
+    assert "'P01'" in text
+    assert "'P03'" in text
+    assert "currently shows 'P03'" in text
+    assert "'P02'" in text
+    assert "C01" in text
+
+
+def test_portal_missing_drawing_uses_first_issue():
+    result = _base(filename_rev="P02", titleblock_rev="P02")
+    result.status = CheckStatus.PORTAL_REVISION
+    result.issues = [CheckStatus.PORTAL_REVISION]
+    result.portal_first_revisions = ["P01", "C01"]
+    text = designer_actions(result)
+    assert "not on the portal yet" in text.lower()
+    assert "currently shows 'P02'" in text
+    assert "P01 or C01" in text
+
+
+def test_portal_title_is_neutral():
+    result = _base(title="Roof Plan")
+    result.status = CheckStatus.PORTAL_TITLE
+    result.issues = [CheckStatus.PORTAL_TITLE]
+    result.portal_title = "Ground Floor GA"
+    text = designer_actions(result)
+    assert "Ground Floor GA" in text
+    assert "Roof Plan" in text
+    assert "one of them needs changing" in text.lower()
+    assert "title-block" in text.lower()

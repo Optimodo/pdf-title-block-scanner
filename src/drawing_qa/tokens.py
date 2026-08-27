@@ -131,6 +131,53 @@ def revision_rank(value: str | None) -> tuple:
     return (9, 0, rev)
 
 
+def parse_pc_revision(value: str | None) -> tuple[str, int] | None:
+    """Return ('P'|'C', number) for ISO preliminary/construction revisions."""
+    if not value:
+        return None
+    match = re.fullmatch(r"([PC])(\d{1,2})", normalize_revision_token(value))
+    if not match:
+        return None
+    return match.group(1), int(match.group(2))
+
+
+def format_pc_revision(series: str, number: int) -> str:
+    return f"{series}{number:02d}"
+
+
+def next_revision(value: str | None) -> str | None:
+    parsed = parse_pc_revision(value)
+    if not parsed:
+        return None
+    series, number = parsed
+    return format_pc_revision(series, number + 1)
+
+
+def is_successor_revision(portal: str | None, local: str | None) -> bool:
+    """True when local is one step on from portal (P01→P02, or any P→C01)."""
+    portal_pc = parse_pc_revision(portal)
+    local_pc = parse_pc_revision(local)
+    if not portal_pc or not local_pc:
+        return False
+    p_series, p_number = portal_pc
+    l_series, l_number = local_pc
+    if p_series == "P" and l_series == "C" and l_number == 1:
+        return True
+    return p_series == l_series and l_number == p_number + 1
+
+
+def is_allowed_first_revision(local: str | None, allowed: list[str] | tuple[str, ...]) -> bool:
+    local_pc = parse_pc_revision(local)
+    if not local_pc:
+        return False
+    formatted = format_pc_revision(*local_pc)
+    for item in allowed:
+        parsed = parse_pc_revision(item)
+        if parsed and format_pc_revision(*parsed) == formatted:
+            return True
+    return False
+
+
 def extract_suitability(text: str | None) -> str | None:
     """Return 'S2 - Suitable for Tender' or 'A - Construction' from code + description."""
     if not text:

@@ -1,0 +1,125 @@
+# Client-portal document-list layouts for the optional revision/title cross-check.
+# Column names come from the drawing-schedule updater project configs.
+# Matching is by header text (case-insensitive), not column letter, so the same
+# layout works even when a portal export shifts columns.
+
+enabled: true
+
+# Skip workbooks that are MBS registers or TBCheck reports, not portal dumps.
+skip_name_contains:
+  - IRS
+  - Drawing Schedule
+  - TBCheck
+  - _designer
+  - document_control
+
+# Prefer these when more than one spreadsheet is in the folder.
+prefer_name_contains:
+  - Listing
+  - Document List
+  - Asite
+  - 4Project
+  - Export
+  - Dump
+
+# Tried in order when locating columns on a header row.
+headers:
+  doc_ref:
+    - Original Doc Ref (Non-Standard)
+    - Doc Ref
+    - Name
+    - Title
+  doc_title:
+    - Description
+    - Doc Title
+    - Subject
+  revision:
+    - Revision
+    - Rev
+  # 4Projects uses Revision Workflow; Asite / DocHosting use Status.
+  # Revision Workflow must be tried first — 4Projects also has a Status column
+  # that is purpose of issue, not A/B/C workflow.
+  status:
+    - Revision Workflow
+    - Workflow State
+    - Workflow Status
+    - Status
+
+# Portal wordings that mean the current issue can be superseded (A, B, or C).
+uploadable_statuses:
+  - Status A
+  - Status B
+  - Status C
+  - A
+  - B
+  - C
+
+# Raw portal / workflow text -> Status A/B/C (or other). Keys are matched
+# case-insensitively. Project maps below are merged on top of this list.
+status_map:
+  A Proceed: Status A
+  A - Proceed: Status A
+  A - Proceed (Lead Reviewer): Status A
+  A - Authorized and Accepted: Status A
+  EA+DM - Status A: Status A
+  B Proceed with Comments: Status B
+  B - Proceed with Comments: Status B
+  B - Proceed with Comments (Lead Reviewer): Status B
+  B - Partial Sign Off (with comment): Status B
+  EA+DM - Status B: Status B
+  C Rejected: Status C
+  C - Rejected: Status C
+  C - Rejected (Lead Reviewer): Status C
+  C-Rejected: Status C
+  C- Rejected: Status C
+  QA - Rejected: Status C
+  Not Approved: Status C
+  DM - Status C: Status C
+  EA+DM - Status C: Status C
+  Pending QA Check: Under Review
+  QA Approved: Under Review
+  QA Rejected: QA Rejected
+  QC Rejected: QA Rejected
+  Shared: Under Review
+  For Commenting: Under Review
+  For QA Check: Under Review
+  Issued: Under Review
+  Under Review: Under Review
+
+# Per-project extras keyed by the ISO project code (first filename field).
+# first_revisions: allowed status when the drawing is not on the portal yet.
+projects:
+  R459:
+    name: Oval C+D
+    search_keys: [OVCD, OVC, OVD, Oval]
+    first_revisions: [P01]
+  R456:
+    name: Trillium
+    search_keys: [Tril, Trillium]
+    first_revisions: [P01]
+  WCR:
+    name: West Cromwell Road
+    search_keys: [WCR]
+    first_revisions: [P01, C01]
+  HPA:
+    name: Holloway Park
+    search_keys: [HP, HPA]
+    first_revisions: [P01]
+    status_map:
+      Construction: Status A
+      IFC-pending: Under Review
+      For-comment: Under Review
+      Information: For Information
+      Preliminary: For Information
+  J106309:
+    name: Barking Riverside
+    search_keys: [BR]
+    first_revisions: [P01]
+  JXXXZ18:
+    name: Greenwich Peninsula
+    search_keys: [GP]
+    first_revisions: [P01]
+  H8499:
+    name: New Malden
+    search_keys: [NM]
+    first_revisions: [P01]

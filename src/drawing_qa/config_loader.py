@@ -6,6 +6,7 @@ from pathlib import Path
 
 import yaml
 
+from drawing_qa.document_list import DocumentListLayout, load_document_list_layout
 from drawing_qa.models import FieldSpec, HistorySpec, RectFrac, TitleBlockLayout
 from drawing_qa.paths import bundled_config_dir, resolve_config_dir
 from drawing_qa.suitability import DEFAULT_PURPOSE_CONSTRUCTION, DEFAULT_PURPOSE_REVIEW
@@ -42,6 +43,12 @@ class PreviewConfig:
 
 
 @dataclass
+class DocumentListConfig:
+    enabled: bool = True
+    layout: DocumentListLayout | None = None
+
+
+@dataclass
 class AppConfig:
     field_count: int
     revision_pattern: str
@@ -52,6 +59,7 @@ class AppConfig:
     spell_check: SpellCheckConfig | None = None
     suitability_check: SuitabilityCheckConfig | None = None
     preview: PreviewConfig | None = None
+    document_list: DocumentListConfig | None = None
 
 
 def _rect(data: dict) -> RectFrac:
@@ -230,6 +238,19 @@ def load_config(config_dir: Path | None = None) -> AppConfig:
         all_files=bool(preview_cfg.get("all_files", False)),
     )
 
+    lists_path = config_dir / "document_lists.yaml"
+    if not lists_path.is_file():
+        bundled_lists = bundled_config_dir() / "document_lists.yaml"
+        if bundled_lists.is_file():
+            lists_path = bundled_lists
+    lists_raw = {}
+    if lists_path.is_file():
+        lists_raw = yaml.safe_load(lists_path.read_text(encoding="utf-8")) or {}
+    document_list = DocumentListConfig(
+        enabled=bool(lists_raw.get("enabled", True)),
+        layout=load_document_list_layout(lists_raw),
+    )
+
     return AppConfig(
         field_count=int(filename_cfg.get("field_count", 7)),
         revision_pattern=str(
@@ -242,6 +263,7 @@ def load_config(config_dir: Path | None = None) -> AppConfig:
         spell_check=spell_check,
         suitability_check=suitability_check,
         preview=preview,
+        document_list=document_list,
     )
 
 

@@ -2,8 +2,14 @@ from datetime import datetime
 from pathlib import Path
 
 from drawing_qa.models import CheckStatus, Confidence, DocumentResult, FilenameFields, TitleBlockFields
-from drawing_qa.paths import designer_report_path
-from drawing_qa.report import DESIGNER_HEADER_ROW, report_project_label, report_stem, write_report
+from drawing_qa.paths import designer_report_path, document_control_report_path
+from drawing_qa.report import (
+    DESIGNER_HEADER_ROW,
+    DOCCONTROL_HEADER_ROW,
+    report_project_label,
+    report_stem,
+    write_report,
+)
 
 
 def _result(*, project: str, name: str = "", confidence: Confidence = Confidence.HIGH) -> DocumentResult:
@@ -67,6 +73,78 @@ def test_write_report_also_writes_designer_sidecar(tmp_path: Path):
     assert sheet["B4"].value == 1
     assert sheet["B5"].value == 1
     assert sheet["B6"].value == 0
+    assert sheet["A7"].value == "Portal list"
+    assert sheet["B7"].value == "—"
     assert sheet.cell(DESIGNER_HEADER_ROW, 1).value == "Drawing number"
     assert sheet.cell(DESIGNER_HEADER_ROW + 1, 1).value == "R459-WXY-ZZ-00-DR-A-0001"
     assert main["Designer actions"]["A1"].value == sheet["A1"].value
+    assert not document_control_report_path(output).is_file()
+
+
+def test_write_report_writes_document_control_sidecar(tmp_path: Path):
+    result = _result(project="R459", name="Oval C+D", confidence=Confidence.HIGH)
+    result.portal_list_name = "OVCD Document Listing.xlsx"
+    result.portal_has_status_column = True
+    result.portal_blocks_upload = True
+    result.portal_revision = "P01"
+    result.portal_status = "Pending QA Check"
+    result.titleblock.revision = "P02"
+    output = write_report([result], tmp_path / "full.xlsx")
+    control = document_control_report_path(output)
+    assert control.is_file()
+    from openpyxl import load_workbook
+
+    sheet = load_workbook(control).active
+    assert sheet.title == "Document control"
+    assert "Document control" in load_workbook(output).sheetnames
+    assert sheet["A2"].value == "Project"
+    assert sheet["B4"].value == 1
+    assert sheet["A6"].value is None or sheet["A6"].value == ""
+    assert sheet.cell(DOCCONTROL_HEADER_ROW, 1).value == "Drawing number"
+    data = DOCCONTROL_HEADER_ROW + 1
+    assert sheet.cell(data, 1).value == "R459-WXY-ZZ-00-DR-A-0001"
+    assert sheet.cell(data, 2).value == "Ground Floor GA"
+    assert sheet.cell(data, 3).value == "P01"
+    assert sheet.cell(data, 4).value == "P02"
+    assert sheet.cell(data, 5).value == "Pending QA Check"
+    assert sheet.cell(data, 6).value == "A, B, or C"
+    assert sheet.cell(DOCCONTROL_HEADER_ROW, 1).alignment.horizontal == "center"
+    assert sheet.cell(data, 1).alignment.horizontal == "center"
+    assert sheet.cell(data, 4).alignment.horizontal == "center"
+
+
+def test_document_control_uses_intended_revision_not_wrong_drawing_rev(tmp_path: Path):
+    result = _result(project="R459", name="Oval C+D", confidence=Confidence.REVIEW)
+    result.portal_list_name = "OVCD Document Listing.xlsx"
+    result.portal_has_status_column = True
+    result.portal_blocks_upload = True
+    result.portal_revision = "C01"
+    result.portal_status = "Pending QA Check"
+    result.proposed_upload_revision = "C02"
+    result.titleblock.revision = "C03"
+    result.filename.revision = "C03"
+    output = write_report([result], tmp_path / "full.xlsx")
+    from openpyxl import load_workbook
+
+    sheet = load_workbook(document_control_report_path(output)).active
+    data = DOCCONTROL_HEADER_ROW + 1
+    assert sheet.cell(data, 3).value == "C01"
+    assert sheet.cell(data, 4).value == "C02"
+    main = load_workbook(output)["Document control"]
+    assert main.cell(data, 4).value == "C02"
+
+
+def test_designer_sheet_centers_all_but_changes_column(tmp_path: Path):
+    result = _result(project="R459", name="Oval C+D", confidence=Confidence.REVIEW)
+    result.issues = [CheckStatus.MISMATCH]
+    output = write_report([result], tmp_path / "full.xlsx")
+    from openpyxl import load_workbook
+
+    sheet = load_workbook(designer_report_path(output)).active
+    header_row = DESIGNER_HEADER_ROW
+    data = header_row + 1
+    for col in (1, 2, 3):
+        assert sheet.cell(header_row, col).alignment.horizontal == "center"
+    assert sheet.cell(data, 1).alignment.horizontal == "center"
+    assert sheet.cell(data, 2).alignment.horizontal == "center"
+    assert sheet.cell(data, 3).alignment.horizontal == "left"

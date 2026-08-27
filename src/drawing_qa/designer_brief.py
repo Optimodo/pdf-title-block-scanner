@@ -5,7 +5,7 @@ from __future__ import annotations
 from drawing_qa.history import history_first_row
 from drawing_qa.models import CheckStatus, DocumentResult, FieldComparison
 from drawing_qa.suitability import suitability_is_allowed
-from drawing_qa.tokens import revision_series
+from drawing_qa.tokens import next_revision, parse_pc_revision, revision_series
 
 
 _FIELD_NOUN = {
@@ -271,9 +271,51 @@ def _issue_actions(
                 f"Rename the DWG ({result.paired_dwg.name}) so it matches the PDF file name."
             ]
         return ["Issue a DWG with the same drawing number as this PDF."]
+    if status == CheckStatus.PORTAL_REVISION:
+        return [_portal_revision_action(result)]
+    if status == CheckStatus.PORTAL_TITLE:
+        return [_portal_title_action(result)]
     if status == CheckStatus.ERROR:
         return ["This PDF could not be opened. Re-export the drawing."]
     return []
+
+
+def _current_revision(result: DocumentResult) -> str:
+    return (result.titleblock.revision or result.filename.revision or "").strip()
+
+
+def _portal_revision_action(result: DocumentResult) -> str:
+    current = _quote(_current_revision(result))
+    if result.portal_revision:
+        nxt = next_revision(result.portal_revision) or "the next revision"
+        extra = ""
+        parsed = parse_pc_revision(result.portal_revision)
+        if parsed and parsed[0] == "P":
+            extra = " (or 'C01' if this is the first construction issue)"
+        return (
+            f"The portal list has this drawing at {_quote(result.portal_revision)}. "
+            f"The drawing currently shows {current}. "
+            f"This issue should be {_quote(nxt)}{extra}."
+        )
+    allowed = [item for item in result.portal_first_revisions if item] or ["P01"]
+    if len(allowed) == 1:
+        expected = allowed[0]
+    elif len(allowed) == 2:
+        expected = f"{allowed[0]} or {allowed[1]}"
+    else:
+        expected = ", ".join(allowed[:-1]) + f", or {allowed[-1]}"
+    return (
+        f"This drawing is not on the portal yet. The drawing currently shows {current}; "
+        f"the first issue should be {expected}."
+    )
+
+
+def _portal_title_action(result: DocumentResult) -> str:
+    local = (result.titleblock.title or result.filename.title or "").strip()
+    return (
+        f"The portal list title is {_quote(result.portal_title)} and the title-block title is "
+        f"{_quote(local)}. These should match, so one of them needs changing."
+    )
 
 
 def designer_actions(result: DocumentResult) -> str:

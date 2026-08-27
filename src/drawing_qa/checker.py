@@ -5,6 +5,11 @@ from pathlib import Path
 from drawing_qa.compare import build_result
 from drawing_qa.config_loader import AppConfig
 from drawing_qa.detect import extract_titleblock
+from drawing_qa.document_list import (
+    check_document_list,
+    find_document_list,
+    load_document_list,
+)
 from drawing_qa.dwg_pairing import check_dwg_pairing
 from drawing_qa.extract import clear_page_word_cache, require_pymupdf
 from drawing_qa.filename import parse_filename
@@ -124,6 +129,7 @@ def check_paths(
     *,
     standardize: bool = False,
     on_pdf=None,
+    document_list: Path | None = None,
 ) -> list[DocumentResult]:
     results: list[DocumentResult] = []
     total = len(paths)
@@ -140,6 +146,28 @@ def check_paths(
             results = check_duplicates(results)
             results = check_date_regression(results)
             results = check_dwg_pairing(results, folder)
+            list_cfg = config.document_list
+            if list_cfg and list_cfg.enabled and list_cfg.layout:
+                project_codes = sorted(
+                    {
+                        (item.filename.parts.get("project") or "").strip().upper()
+                        for item in results
+                        if item.filename.parts.get("project")
+                    }
+                )
+                list_path = find_document_list(
+                    folder,
+                    list_cfg.layout,
+                    explicit=document_list,
+                    project_codes=project_codes,
+                )
+                if list_path is not None:
+                    try:
+                        index = load_document_list(list_path, list_cfg.layout)
+                    except Exception:  # noqa: BLE001 - optional check must not abort QA
+                        index = None
+                    if index is not None and index.by_ref:
+                        results = check_document_list(results, index, list_cfg.layout)
 
             for result in results:
                 finalize_status(result)
