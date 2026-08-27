@@ -56,6 +56,10 @@ BODY_FONT = Font(size=10)
 HEADER_FILL = PatternFill("solid", fgColor="1F4E79")
 HEADER_FONT = Font(color="FFFFFF", bold=True, size=10)
 HEADER_ALIGN = Alignment(wrap_text=True, vertical="center", horizontal="center")
+PURPOSE_KIND_FILL = PatternFill("solid", fgColor="DDEBF7")
+PURPOSE_PROJECT_FILL = PatternFill("solid", fgColor="BDD7EE")
+PURPOSE_VALUE_FILL = PatternFill("solid", fgColor="FFFFFF")
+PURPOSE_KIND_FONT = Font(bold=True, size=10, color="1F4E79")
 WRAP = Alignment(wrap_text=True, vertical="center")
 CENTER_WRAP = Alignment(wrap_text=True, vertical="center", horizontal="center")
 LEFT_WRAP = Alignment(wrap_text=True, vertical="center", horizontal="left")
@@ -397,11 +401,17 @@ def _write_summary(ws: Worksheet, results: list[DocumentResult]) -> None:
     ws["A3"] = "Documents checked"
     ws["B3"] = len(results)
     ws["A4"] = "Start here"
-    ws["B4"] = (
-        "Send the designer workbook (or the Designer actions sheet) to CAD. "
-        "Use Review needed for full detail and previews, then DWG pairing if this "
-        "folder has CAD copies."
-    )
+    if any(item.confidence == Confidence.REVIEW for item in results):
+        ws["B4"] = (
+            "Send the designer workbook (or the Designer actions sheet) to CAD. "
+            "Use Review needed for full detail and previews, then DWG pairing if this "
+            "folder has CAD copies."
+        )
+    else:
+        ws["B4"] = (
+            "No designer actions. Use Review needed for full detail and previews, "
+            "then DWG pairing if this folder has CAD copies."
+        )
     ws["B4"].alignment = Alignment(wrap_text=True)
     ws.merge_cells("B4:F4")
     for coord in ("A2", "B2", "A3", "B3", "A4", "B4"):
@@ -609,52 +619,52 @@ def _apply_designer_cell(cell, *, header: bool = False, changes: bool = False) -
     cell.alignment = LEFT_WRAP if changes else CENTER_WRAP
 
 
+def _style_purpose_cell(cell, *, fill, font) -> None:
+    cell.fill = fill
+    cell.font = font
+    cell.alignment = CENTER_WRAP
+    cell.border = THIN_BORDER
+
+
+def _write_purpose_kind_row(ws: Worksheet, row: int, official: bool) -> int:
+    label = "Official list" if official else "Suggested list"
+    cell = ws.cell(row, 1, label)
+    _style_purpose_cell(cell, fill=PURPOSE_KIND_FILL, font=PURPOSE_KIND_FONT)
+    ws.row_dimensions[row].height = 18
+    return row + 1
+
+
 def _write_purpose_list(ws: Worksheet, results: list[DocumentResult], start_row: int) -> None:
     groups = designer_purpose_groups(results)
     if not groups:
         return
-    official_any = any(official for _label, _values, official in groups)
-    default_any = any(not official for _label, _values, official in groups)
-    heading_text = "Approved purposes of issue"
-    if official_any and not default_any:
-        note_text = (
-            "Official project list. Use a value from this list. "
-            "The rows above do not pick the purpose for you."
-        )
-    elif default_any and not official_any:
-        note_text = (
-            "Default whitelist for projects without their own list. "
-            "Use a value from this list. The rows above do not pick the purpose for you."
-        )
-    else:
-        note_text = (
-            "Project lists are labelled below. Drawings with no project list "
-            "use the default approved list. "
-            "The rows above do not pick the purpose for you."
-        )
     row = start_row
-    title = ws.cell(row, 1, heading_text)
-    title.font = Font(bold=True, size=10, color="1F4E79")
-    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=3)
+    title = ws.cell(row, 1, "Approved purposes of issue")
+    title.fill = HEADER_FILL
+    title.font = HEADER_FONT
+    title.alignment = HEADER_ALIGN
+    title.border = THIN_BORDER
+    ws.row_dimensions[row].height = 20
     row += 1
-    note = ws.cell(row, 1, note_text)
-    note.font = BODY_FONT
-    note.alignment = Alignment(wrap_text=True, vertical="center")
-    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=3)
-    ws.row_dimensions[row].height = 32
-    row += 1
-    for label, values, _official in groups:
-        heading = ws.cell(row, 1, label)
-        heading.font = Font(bold=True, size=10)
-        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=3)
-        row += 1
-        for value in values:
-            cell = ws.cell(row, 1, value)
-            cell.font = BODY_FONT
-            cell.alignment = CENTER_WRAP
+    flags = {official for _label, _values, official in groups}
+    uniform = len(flags) == 1
+    if uniform:
+        row = _write_purpose_kind_row(ws, row, next(iter(flags)))
+    for label, values, official in groups:
+        if not uniform:
+            row = _write_purpose_kind_row(ws, row, official)
+        if official:
+            heading = ws.cell(row, 1, label)
+            _style_purpose_cell(
+                heading, fill=PURPOSE_PROJECT_FILL, font=Font(bold=True, size=10)
+            )
             ws.row_dimensions[row].height = 18
             row += 1
-        row += 1
+        for value in values:
+            cell = ws.cell(row, 1, value)
+            _style_purpose_cell(cell, fill=PURPOSE_VALUE_FILL, font=BODY_FONT)
+            ws.row_dimensions[row].height = 18
+            row += 1
 
 
 def _write_designer_sheet(
@@ -707,13 +717,15 @@ def _write_designer_sheet(
     _write_purpose_list(ws, all_results, last_data + 2)
 
 
-def write_designer_report(results: list[DocumentResult], output: Path) -> Path:
+def write_designer_report(results: list[DocumentResult], output: Path) -> Path | None:
     """Single-tab workbook for email: simple summary + designer actions."""
+    review = [item for item in results if item.confidence == Confidence.REVIEW]
+    if not review:
+        return None
     output.parent.mkdir(parents=True, exist_ok=True)
     wb = Workbook()
     ws = wb.active
     ws.title = "Designer actions"
-    review = [item for item in results if item.confidence == Confidence.REVIEW]
     _write_designer_sheet(ws, review, results)
     wb.save(output)
     return output
@@ -731,13 +743,20 @@ DOCCONTROL_HEADER_ROW = 7
 DOCCONTROL_PLEASE_CHANGE = "A, B, or C"
 
 
+def _document_control_needed(results: list[DocumentResult]) -> list[DocumentResult]:
+    """Drawings that document control must action. Empty means no sheet or sidecar."""
+    if not any(item.portal_has_status_column for item in results):
+        return []
+    return blocked_uploads(results)
+
+
 def write_document_control_report(
     results: list[DocumentResult], output: Path
 ) -> Path | None:
     """One-tab workbook for client document control: drawings that cannot be uploaded."""
-    if not any(item.portal_has_status_column for item in results):
+    blocked = _document_control_needed(results)
+    if not blocked:
         return None
-    blocked = blocked_uploads(results)
     output.parent.mkdir(parents=True, exist_ok=True)
     wb = Workbook()
     ws = wb.active
@@ -840,13 +859,13 @@ def write_report(results: list[DocumentResult], output: Path) -> Path:
         ]
         high = [item for item in results if item.confidence == Confidence.HIGH]
 
-        designer_sheet = wb.create_sheet("Designer actions")
-        _write_designer_sheet(designer_sheet, review, results)
-        if any(item.portal_has_status_column for item in results):
+        if review:
+            designer_sheet = wb.create_sheet("Designer actions")
+            _write_designer_sheet(designer_sheet, review, results)
+        blocked = _document_control_needed(results)
+        if blocked:
             control_sheet = wb.create_sheet("Document control")
-            _write_document_control_sheet(
-                control_sheet, blocked_uploads(results), results
-            )
+            _write_document_control_sheet(control_sheet, blocked, results)
         review_sheet = wb.create_sheet("Review needed")
         _write_rows(review_sheet, review, keep)
         dwg_sheet = wb.create_sheet("DWG pairing")

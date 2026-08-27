@@ -26,6 +26,11 @@ _DEFAULT_FIRST = ("P01",)
 _REPORT_STEM = re.compile(r"_\d{6}(?:-\d+)?$", re.I)
 
 
+@dataclass(frozen=True)
+class ConstructionUpgradeSpec:
+    revision: str = "C01"
+
+
 @dataclass
 class DocumentListLayout:
     doc_ref_headers: list[str]
@@ -39,6 +44,7 @@ class DocumentListLayout:
     status_map: dict[str, str] = field(default_factory=dict)
     project_status_maps: dict[str, dict[str, str]] = field(default_factory=dict)
     uploadable_statuses: list[str] = field(default_factory=list)
+    construction_upgrade: dict[str, ConstructionUpgradeSpec] = field(default_factory=dict)
     enabled: bool = True
 
 
@@ -70,6 +76,12 @@ def load_document_list_layout(raw: dict | None) -> DocumentListLayout:
     first: dict[str, list[str]] = {}
     keys: dict[str, list[str]] = {}
     project_status: dict[str, dict[str, str]] = {}
+    upgrades: dict[str, ConstructionUpgradeSpec] = {}
+    default_upgrade = _construction_upgrade_spec(
+        data.get("construction_upgrade"),
+        ConstructionUpgradeSpec(),
+        default_enabled=False,
+    ) or ConstructionUpgradeSpec()
     for code, spec in projects.items():
         if not isinstance(spec, dict):
             continue
@@ -87,6 +99,11 @@ def load_document_list_layout(raw: dict | None) -> DocumentListLayout:
         extra = _status_lookup(spec.get("status_map"))
         if extra:
             project_status[project] = extra
+        upgrade = _construction_upgrade_spec(
+            spec.get("construction_upgrade"), default_upgrade, default_enabled=False
+        )
+        if upgrade is not None:
+            upgrades[project] = upgrade
     return DocumentListLayout(
         enabled=bool(data.get("enabled", True)),
         doc_ref_headers=_string_list(headers.get("doc_ref")),
@@ -99,7 +116,9 @@ def load_document_list_layout(raw: dict | None) -> DocumentListLayout:
         search_keys=keys,
         status_map=_status_lookup(data.get("status_map")),
         project_status_maps=project_status,
-        uploadable_statuses=_string_list(data.get("uploadable_statuses")) or ["Status A", "Status B", "Status C", "A", "B", "C"],
+        uploadable_statuses=_string_list(data.get("uploadable_statuses"))
+        or ["Status A", "Status B", "Status C", "A", "B", "C"],
+        construction_upgrade=upgrades,
     )
 
 
@@ -124,6 +143,28 @@ def _status_lookup(raw: object) -> dict[str, str]:
             continue
         mapped[_status_key(str(key))] = str(value or "").strip()
     return mapped
+
+
+def _construction_upgrade_spec(
+    raw: object,
+    defaults: ConstructionUpgradeSpec,
+    *,
+    default_enabled: bool = True,
+) -> ConstructionUpgradeSpec | None:
+    """Parse construction_upgrade: true, false, or {enabled, revision}."""
+    if raw is None:
+        return defaults if default_enabled else None
+    if isinstance(raw, bool):
+        return defaults if raw else None
+    if isinstance(raw, dict):
+        if not bool(raw.get("enabled", True)):
+            return None
+        revision = str(raw.get("revision") or defaults.revision).strip() or defaults.revision
+        return ConstructionUpgradeSpec(revision=revision)
+    text = str(raw).strip().lower()
+    if text in {"1", "true", "yes", "on"}:
+        return defaults
+    return None
 
 
 def is_spreadsheet(path: Path) -> bool:
@@ -311,13 +352,21 @@ def _local_title(result: DocumentResult) -> str | None:
     return result.titleblock.title or result.filename.title
 
 
-def intended_upload_revision(portal_rev: str | None, local_rev: str | None) -> str:
+def intended_upload_revision(
+    portal_rev: str | None,
+    local_rev: str | None,
+    *,
+    require_revision: str | None = None,
+) -> str:
     """Revision we will upload after designer corrections.
 
     If the drawing is already one issue up from the portal, keep that revision.
     If it is the same, skipped, or backwards (C01 on portal vs C03 on the drawing),
     use the next portal revision so document control is not asked to accept the wrong issue.
+    When a project is upgrading P to C, require_revision (C01) wins.
     """
+    if require_revision:
+        return require_revision
     if portal_rev and local_rev and is_successor_revision(portal_rev, local_rev):
         return local_rev
     if portal_rev:
@@ -338,8 +387,54 @@ def map_portal_status(raw: str, layout: DocumentListLayout, project: str | None)
     return raw.strip()
 
 
+def status_letter(raw: str, layout: DocumentListLayout, project: str | None) -> str | None:
+    """Return A, B, or C when the portal workflow status maps to one of those."""
+    mapped = map_portal_status(raw, layout, project)
+    for candidate in (mapped, raw):
+        text = re.sub(r"\s+", " ", candidate or "").strip()
+        if not text:
+            continue
+        match = re.fullmatch(r"(?:status\s*)?([ABC])", text, flags=re.IGNORECASE)
+        if match:
+            return match.group(1).upper()
+    return None
+
+
+def construction_upgrade_for(
+    project: str | None, layout: DocumentListLayout
+) -> ConstructionUpgradeSpec | None:
+    if not project:
+        return None
+    return layout.construction_upgrade.get(project.strip().upper())
+
+
+def should_upgrade_to_construction(
+    portal: PortalDocument,
+    layout: DocumentListLayout,
+    project: str | None,
+    *,
+    has_status: bool,
+) -> ConstructionUpgradeSpec | None:
+    """Approved P issue on a project that has moved to construction issue."""
+    spec = construction_upgrade_for(project, layout)
+    if spec is None or not has_status:
+        return None
+    parsed = parse_pc_revision(portal.revision)
+    if not parsed or parsed[0] != "P":
+        return None
+    if status_letter(portal.status, layout, project) not in {"A", "B"}:
+        return None
+    return spec
+
+
+def _revision_matches(local: str | None, expected: str) -> bool:
+    got = parse_pc_revision(local)
+    want = parse_pc_revision(expected)
+    return bool(got and want and got == want)
+
+
 def status_allows_upload(raw: str, layout: DocumentListLayout, project: str | None) -> bool:
-    """True when the portal workflow status is A, B, or C (current issue can be superseded)."""
+    """True when the current issue can be superseded (A/B/C or QA Approved)."""
     mapped = map_portal_status(raw, layout, project)
     for candidate in (mapped, raw):
         text = re.sub(r"\s+", " ", candidate or "").strip()
@@ -356,7 +451,10 @@ def status_allows_upload(raw: str, layout: DocumentListLayout, project: str | No
 
 
 def blocked_uploads(results: list[DocumentResult]) -> list[DocumentResult]:
-    """PDFs that cannot be uploaded until document control sets portal status A/B/C."""
+    """PDFs that cannot be uploaded until document control sets portal status A/B/C.
+
+    QA Approved is omitted: that workflow already allows a new revision.
+    """
     return [item for item in results if item.portal_blocks_upload]
 
 
@@ -400,10 +498,29 @@ def check_document_list(
         result.portal_revision = portal.revision
         result.portal_title = portal.title or None
         result.portal_status = portal.status or None
-        result.proposed_upload_revision = intended_upload_revision(portal.revision, local_rev)
+        upgrade = should_upgrade_to_construction(
+            portal, layout, project, has_status=index.has_status
+        )
+        if upgrade is not None:
+            result.construction_upgrade_required = True
+            result.proposed_upload_revision = intended_upload_revision(
+                portal.revision, local_rev, require_revision=upgrade.revision
+            )
+        else:
+            result.proposed_upload_revision = intended_upload_revision(
+                portal.revision, local_rev
+            )
         if index.has_status and not status_allows_upload(portal.status, layout, project):
             result.portal_blocks_upload = True
-        if local_rev and not is_successor_revision(portal.revision, local_rev):
+        if upgrade is not None:
+            if not _revision_matches(local_rev, upgrade.revision):
+                result.notes.append(
+                    f"Portal list {source} has {doc_ref} at {portal.revision} "
+                    f"({portal.status or 'no status'}); this project is issuing construction, "
+                    f"so this file should be {upgrade.revision}, not {local_rev}"
+                )
+                record_issue(result, CheckStatus.PORTAL_REVISION)
+        elif local_rev and not is_successor_revision(portal.revision, local_rev):
             nxt = next_revision(portal.revision)
             extra = ""
             if parse_pc_revision(portal.revision) and parse_pc_revision(portal.revision)[0] == "P":

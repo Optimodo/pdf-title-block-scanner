@@ -53,7 +53,27 @@ def _drawing(
     revision: str = "P01",
     title: str = "Ground Floor GA",
     doc_ref: str | None = None,
+    suitability: str | None = None,
 ) -> DocumentResult:
+    ref = doc_ref or f"{project}-WXY-ZZ-00-DR-A-{number}"
+    return DocumentResult(
+        path=Path(f"{ref}-{revision}.pdf"),
+        filename=FilenameFields(
+            raw_stem=f"{ref}-{revision}",
+            document_reference=ref,
+            title=title,
+            revision=revision,
+            parse_ok=True,
+            parts={"project": project},
+        ),
+        titleblock=TitleBlockFields(
+            document_reference=ref,
+            title=title,
+            revision=revision,
+            suitability=suitability,
+        ),
+        status=CheckStatus.MATCH,
+    )
     ref = doc_ref or f"{project}-WXY-ZZ-00-DR-A-{number}"
     return DocumentResult(
         path=Path(f"{ref}-{revision}.pdf"),
@@ -280,6 +300,7 @@ def test_status_allows_upload_uses_project_wordings():
     assert status_allows_upload("EA+DM - Status B", layout, "WCR")
     assert status_allows_upload("Construction", layout, "HPA")
     assert not status_allows_upload("Construction", layout, "R459")
+    assert status_allows_upload("QA Approved", layout, "R459")
     assert not status_allows_upload("Pending QA Check", layout, "R459")
     assert not status_allows_upload("QA Rejected", layout, "R459")
     assert not status_allows_upload("", layout, "R459")
@@ -334,6 +355,10 @@ def test_blocks_upload_when_portal_status_is_not_abc():
     ok = check_document_list([_drawing(revision="P02")], index, layout)[0]
     assert not ok.portal_blocks_upload
 
+    index.by_ref["ABC-WXY-ZZ-00-DR-A-0001"].status = "QA Approved"
+    qa_ok = check_document_list([_drawing(revision="P02")], index, layout)[0]
+    assert not qa_ok.portal_blocks_upload
+
 
 def test_new_portal_drawing_is_not_an_upload_block():
     layout = _layout()
@@ -370,3 +395,101 @@ def test_check_sets_proposed_upload_to_next_portal_issue():
     result = check_document_list([_drawing(revision="C03")], index, layout)[0]
     assert result.proposed_upload_revision == "C02"
     assert result.portal_blocks_upload
+
+
+def test_r459_approved_p_must_go_to_c01_construction():
+    layout = _layout()
+    index = DocumentListIndex(
+        path=Path("OVCD Document Listing.xlsx"),
+        has_status=True,
+        by_ref={
+            "R459-WXY-ZZ-00-DR-A-0001": PortalDocument(
+                "R459-WXY-ZZ-00-DR-A-0001",
+                "P04",
+                "Ground Floor GA",
+                "A Proceed",
+            )
+        },
+    )
+    still_p = check_document_list(
+        [_drawing(project="R459", revision="P05")], index, layout
+    )[0]
+    finalize_status(still_p)
+    assert still_p.construction_upgrade_required
+    assert still_p.proposed_upload_revision == "C01"
+    assert CheckStatus.PORTAL_REVISION in still_p.issues
+    assert CheckStatus.PURPOSE_MISMATCH not in still_p.issues
+
+    ok = check_document_list(
+        [_drawing(project="R459", revision="C01")],
+        index,
+        layout,
+    )[0]
+    finalize_status(ok)
+    assert ok.proposed_upload_revision == "C01"
+    assert CheckStatus.PORTAL_REVISION not in ok.issues
+
+    # Purpose of issue is not pinned to one whitelist string here.
+    review_purpose = check_document_list(
+        [
+            _drawing(
+                project="R459",
+                revision="C01",
+                suitability="S3 - For Review & Comment",
+            )
+        ],
+        index,
+        layout,
+    )[0]
+    finalize_status(review_purpose)
+    assert CheckStatus.PORTAL_REVISION not in review_purpose.issues
+    assert CheckStatus.PURPOSE_MISMATCH not in review_purpose.issues
+
+
+def test_r459_rejected_p_can_still_go_to_p_next():
+    layout = _layout()
+    index = DocumentListIndex(
+        path=Path("OVCD Document Listing.xlsx"),
+        has_status=True,
+        by_ref={
+            "R459-WXY-ZZ-00-DR-A-0001": PortalDocument(
+                "R459-WXY-ZZ-00-DR-A-0001",
+                "P04",
+                "Ground Floor GA",
+                "C Rejected",
+            )
+        },
+    )
+    result = check_document_list(
+        [_drawing(project="R459", revision="P05")], index, layout
+    )[0]
+    finalize_status(result)
+    assert not result.construction_upgrade_required
+    assert result.proposed_upload_revision == "P05"
+    assert CheckStatus.PORTAL_REVISION not in result.issues
+
+
+def test_construction_upgrade_is_off_for_other_projects():
+    layout = _layout()
+    index = DocumentListIndex(
+        path=Path("Listing.xlsx"),
+        has_status=True,
+        by_ref={
+            "ABC-WXY-ZZ-00-DR-A-0001": PortalDocument(
+                "ABC-WXY-ZZ-00-DR-A-0001",
+                "P01",
+                "Ground Floor GA",
+                "A Proceed",
+            )
+        },
+    )
+    result = check_document_list([_drawing(revision="P02")], index, layout)[0]
+    finalize_status(result)
+    assert not result.construction_upgrade_required
+    assert CheckStatus.PORTAL_REVISION not in result.issues
+
+
+def test_intended_upload_revision_can_require_c01():
+    from drawing_qa.document_list import intended_upload_revision
+
+    assert intended_upload_revision("P04", "P05", require_revision="C01") == "C01"

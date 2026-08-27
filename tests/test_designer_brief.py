@@ -220,9 +220,31 @@ def test_designer_sheet_lists_whitelist_not_a_predicted_status(tmp_path: Path):
     assert sheet["A5"].value == "Need action"
     assert sheet.cell(DESIGNER_HEADER_ROW, 1).value == "Drawing number"
     assert "Approved purposes of issue" in values
+    assert "Official list" in values
+    assert "Suggested list" not in values
     assert "Project R459 (Oval C+D)" in values
     assert "S3 - For Review & Comment" in values
     assert "S5 - For Construction" in values
+    assert not any("do not pick the purpose" in item.lower() for item in values)
+    assert not any("official project list" in item.lower() for item in values)
+    project_cell = next(
+        cell
+        for row in sheet.iter_rows(min_col=1, max_col=1)
+        for cell in row
+        if cell.value == "Project R459 (Oval C+D)"
+    )
+    kind_cell = next(
+        cell
+        for row in sheet.iter_rows(min_col=1, max_col=1)
+        for cell in row
+        if cell.value == "Official list"
+    )
+    assert project_cell.alignment.horizontal == "center"
+    assert kind_cell.alignment.horizontal == "center"
+    assert project_cell.border.left.style == "thin"
+    assert kind_cell.border.left.style == "thin"
+    assert not any(project_cell.coordinate in rng for rng in sheet.merged_cells.ranges)
+    assert not any(kind_cell.coordinate in rng for rng in sheet.merged_cells.ranges)
     action = sheet.cell(DESIGNER_HEADER_ROW + 1, 3).value or ""
     assert "S4 - Construction" in action
     assert "see bottom of this sheet" in action.lower()
@@ -373,3 +395,21 @@ def test_portal_title_is_neutral():
     assert "Roof Plan" in text
     assert "one of them needs changing" in text.lower()
     assert "title-block" in text.lower()
+
+
+def test_construction_upgrade_tells_designer_to_move_to_c01():
+    result = _base(filename_rev="P05", titleblock_rev="P05")
+    result.titleblock.suitability = "S3 - For Review & Comment"
+    result.status = CheckStatus.PORTAL_REVISION
+    result.issues = [CheckStatus.PORTAL_REVISION]
+    result.portal_revision = "P04"
+    result.portal_status = "A Proceed"
+    result.construction_upgrade_required = True
+    text = designer_actions(result)
+    assert "P04" in text
+    assert "A Proceed" in text
+    assert "'C01'" in text
+    assert "construction" in text.lower()
+    assert "P05" in text
+    assert "S5" not in text
+    assert "S4" not in text

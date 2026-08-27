@@ -242,7 +242,9 @@ def _take_dropped_document_list(argv: list[str]) -> tuple[list[str], Path | None
 
 def _print_report_paths(saved: Path) -> None:
     print(f"Report: {saved}")
-    print(f"Designer: {designer_report_path(saved)}")
+    designer = designer_report_path(saved)
+    if designer.is_file():
+        print(f"Designer: {designer}")
     control = document_control_report_path(saved)
     if control.is_file():
         print(f"Document control: {control}")

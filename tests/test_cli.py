@@ -31,7 +31,7 @@ def test_cli_check_writes_report(tmp_path: Path, config_dir: Path):
     )
     assert code == 0
     assert output.is_file()
-    assert (tmp_path / "out_designer.xlsx").is_file()
+    assert not (tmp_path / "out_designer.xlsx").is_file()
 
 
 def test_cli_inspect_writes_crops(tmp_path: Path, config_dir: Path):
@@ -70,7 +70,7 @@ def test_auto_check_uses_program_folder(tmp_path: Path, monkeypatch):
     assert code == 0
     stem = _abc_report_stem()
     assert (tmp_path / f"{stem}.xlsx").is_file()
-    assert (tmp_path / f"{stem}_designer.xlsx").is_file()
+    assert not (tmp_path / f"{stem}_designer.xlsx").is_file()
 
 
 def test_auto_check_versions_existing_report(tmp_path: Path, monkeypatch):
@@ -86,11 +86,11 @@ def test_auto_check_versions_existing_report(tmp_path: Path, monkeypatch):
     code = main(["--no-pause"])
     assert code == 0
     assert (tmp_path / f"{stem}-1.xlsx").is_file()
-    assert (tmp_path / f"{stem}-1_designer.xlsx").is_file()
+    assert not (tmp_path / f"{stem}-1_designer.xlsx").is_file()
     assert (tmp_path / f"{stem}.xlsx").read_bytes() == b"old"
 
 
-def test_dropped_excel_is_used_as_document_list(tmp_path: Path, monkeypatch):
+def test_dropped_excel_is_used_as_document_list(tmp_path: Path, monkeypatch, capsys):
     from openpyxl import Workbook
 
     write_bottom_right_pdf(
@@ -111,8 +111,10 @@ def test_dropped_excel_is_used_as_document_list(tmp_path: Path, monkeypatch):
     stem = _abc_report_stem()
     from openpyxl import load_workbook
 
-    sheet = load_workbook(tmp_path / f"{stem}_designer.xlsx").active
-    assert sheet["B7"].value == "OVCD Document Listing.xlsx"
+    captured = capsys.readouterr()
+    assert "OVCD Document Listing.xlsx" in captured.out
+    assert load_workbook(tmp_path / f"{stem}.xlsx")["All documents"]["A2"].value == "MATCH"
+    assert not (tmp_path / f"{stem}_designer.xlsx").is_file()
 
 
 def test_check_spreadsheet_argument_scans_parent_folder(tmp_path: Path, config_dir: Path):

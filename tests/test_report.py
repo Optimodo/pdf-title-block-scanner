@@ -81,6 +81,15 @@ def test_write_report_also_writes_designer_sidecar(tmp_path: Path):
     assert not document_control_report_path(output).is_file()
 
 
+def test_write_report_skips_designer_when_nothing_to_action(tmp_path: Path):
+    result = _result(project="R459", name="Oval C+D", confidence=Confidence.HIGH)
+    output = write_report([result], tmp_path / "full.xlsx")
+    from openpyxl import load_workbook
+
+    assert "Designer actions" not in load_workbook(output).sheetnames
+    assert not designer_report_path(output).is_file()
+
+
 def test_write_report_writes_document_control_sidecar(tmp_path: Path):
     result = _result(project="R459", name="Oval C+D", confidence=Confidence.HIGH)
     result.portal_list_name = "OVCD Document Listing.xlsx"
@@ -111,6 +120,19 @@ def test_write_report_writes_document_control_sidecar(tmp_path: Path):
     assert sheet.cell(DOCCONTROL_HEADER_ROW, 1).alignment.horizontal == "center"
     assert sheet.cell(data, 1).alignment.horizontal == "center"
     assert sheet.cell(data, 4).alignment.horizontal == "center"
+
+
+def test_write_report_skips_document_control_when_nothing_to_action(tmp_path: Path):
+    result = _result(project="R459", name="Oval C+D", confidence=Confidence.HIGH)
+    result.portal_list_name = "OVCD Document Listing.xlsx"
+    result.portal_has_status_column = True
+    result.portal_blocks_upload = False
+    result.portal_status = "QA Approved"
+    output = write_report([result], tmp_path / "full.xlsx")
+    from openpyxl import load_workbook
+
+    assert "Document control" not in load_workbook(output).sheetnames
+    assert not document_control_report_path(output).is_file()
 
 
 def test_document_control_uses_intended_revision_not_wrong_drawing_rev(tmp_path: Path):

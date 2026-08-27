@@ -262,6 +262,7 @@ class DocumentResult:
     portal_has_status_column: bool = False
     portal_blocks_upload: bool = False
     proposed_upload_revision: str | None = None
+    construction_upgrade_required: bool = False
 
     def mismatch_field_labels(self) -> list[str]:
         """Human names of filename vs title-block fields that disagreed."""

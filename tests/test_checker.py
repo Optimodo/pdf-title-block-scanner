@@ -145,6 +145,8 @@ def test_excel_report_created(tmp_path: Path, config_dir: Path):
         if cell.value
     ]
     assert "Approved purposes of issue" in purpose_cells
+    assert "Suggested list" in purpose_cells
+    assert "Official list" not in purpose_cells
     assert "S5 - For Construction" in purpose_cells
     assert wb["All documents"]._images
     data = wb["All documents"]

@@ -272,6 +272,8 @@ def _issue_actions(
             ]
         return ["Issue a DWG with the same drawing number as this PDF."]
     if status == CheckStatus.PORTAL_REVISION:
+        if result.construction_upgrade_required:
+            return [_construction_upgrade_action(result)]
         return [_portal_revision_action(result)]
     if status == CheckStatus.PORTAL_TITLE:
         return [_portal_title_action(result)]
@@ -282,6 +284,16 @@ def _issue_actions(
 
 def _current_revision(result: DocumentResult) -> str:
     return (result.titleblock.revision or result.filename.revision or "").strip()
+
+
+def _construction_upgrade_action(result: DocumentResult) -> str:
+    current = _quote(_current_revision(result))
+    status = result.portal_status or "A or B"
+    return (
+        f"The portal list has this drawing at {_quote(result.portal_revision)} with status "
+        f"{_quote(status)}. That P issue is approved, so this issue should be 'C01' "
+        f"(first construction issue). The drawing currently shows {current}."
+    )
 
 
 def _portal_revision_action(result: DocumentResult) -> str:
@@ -325,13 +337,25 @@ def designer_actions(result: DocumentResult) -> str:
         issues = [result.status]
     purpose_line = _purpose_action(result, issues)
     skip_purpose = purpose_line is not None
+    upgrade_needed = result.construction_upgrade_required and (
+        CheckStatus.PORTAL_REVISION in issues
+    )
+    if upgrade_needed:
+        skip_purpose = True
+        purpose_line = None
     lines: list[str] = []
     seen: set[str] = set()
+    if upgrade_needed:
+        upgrade_line = _construction_upgrade_action(result)
+        seen.add(upgrade_line)
+        lines.append(upgrade_line)
     if purpose_line:
         seen.add(purpose_line)
         lines.append(purpose_line)
     for status in issues:
         if status in _PURPOSE_STATUSES:
+            continue
+        if upgrade_needed and status == CheckStatus.PORTAL_REVISION:
             continue
         for line in _issue_actions(result, status, skip_purpose=skip_purpose):
             if line not in seen:

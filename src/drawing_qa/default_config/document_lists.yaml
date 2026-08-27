@@ -45,7 +45,9 @@ headers:
     - Workflow Status
     - Status
 
-# Portal wordings that mean the current issue can be superseded (A, B, or C).
+# Portal wordings that mean the current issue can be superseded.
+# A/B/C are client statuses. QA Approved is internal QA done — the issue
+# can still be revised, so document control is not asked to change it.
 uploadable_statuses:
   - Status A
   - Status B
@@ -53,6 +55,7 @@ uploadable_statuses:
   - A
   - B
   - C
+  - QA Approved
 
 # Raw portal / workflow text -> Status A/B/C (or other). Keys are matched
 # case-insensitively. Project maps below are merged on top of this list.
@@ -86,13 +89,19 @@ status_map:
   Issued: Under Review
   Under Review: Under Review
 
-# Per-project extras keyed by the ISO project code (first filename field).
-# first_revisions: allowed status when the drawing is not on the portal yet.
+# When a project turns construction_upgrade on, an approved P issue
+# (portal status A or B) must be superseded by C01. Purpose of issue
+# follows the project's construction whitelist (not a fixed S5/S4 string).
+# Projects without the flag keep the normal P01→P02 (or optional C01) rule.
+construction_upgrade:
+  revision: C01
+
 projects:
   R459:
     name: Oval C+D
     search_keys: [OVCD, OVC, OVD, Oval]
     first_revisions: [P01]
+    construction_upgrade: true
   R456:
     name: Trillium
     search_keys: [Tril, Trillium]
