@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import re
 
-from drawing_qa.config_loader import SpellCheckConfig, SuitabilityCheckConfig
+from drawing_qa.client import (
+    allowed_clients_for_project,
+    client_is_allowed,
+    client_whitelist_note,
+)
+from drawing_qa.config_loader import ClientCheckConfig, SpellCheckConfig, SuitabilityCheckConfig
 from drawing_qa.models import (
     CheckStatus,
     Confidence,
@@ -354,6 +359,7 @@ def build_result(
     rules: dict[str, str],
     spell_check_config: SpellCheckConfig | None = None,
     suitability_check_config: SuitabilityCheckConfig | None = None,
+    client_check_config: ClientCheckConfig | None = None,
 ) -> DocumentResult:
     allowed: list[str] = []
     accept_code_only = True
@@ -444,6 +450,26 @@ def build_result(
         if purpose_note:
             result.notes.append(purpose_note)
             record_issue(result, CheckStatus.PURPOSE_MISMATCH)
+
+    if (
+        client_check_config
+        and client_check_config.enabled
+        and CheckStatus.UNDETECTED not in result.issues
+        and result.status != CheckStatus.UNDETECTED
+    ):
+        project = result.filename.parts.get("project")
+        allowed_clients = allowed_clients_for_project(
+            project, client_check_config.projects
+        )
+        result.allowed_clients = list(allowed_clients)
+        if allowed_clients and not client_is_allowed(
+            result.titleblock.client, allowed_clients
+        ):
+            result.notes.append(
+                client_whitelist_note(result.titleblock.client, allowed_clients)
+            )
+            if client_check_config.fail_on_error:
+                record_issue(result, CheckStatus.CLIENT_ERROR)
 
     finalize_status(result)
     return result

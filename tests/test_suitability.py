@@ -136,8 +136,28 @@ def test_bundled_config_loads_iso_list(config_dir: Path):
     assert config.suitability_check.project_names["J106309"] == "Barking Riverside"
     assert "CR - Construction Record" in config.suitability_check.projects["J106309"]
     assert "S4 - Suitable for Other Stage Approvals" in config.suitability_check.projects["J106309"]
+    assert "WCR" in config.suitability_check.projects
+    assert config.suitability_check.project_names["WCR"] == "West Cromwell Road"
+    assert config.client_check is not None
+    assert config.client_check.projects["WCR"] == ["Seven Capital Woodrow"]
+    assert config.client_check.projects["R459"] == ["Berkeley", "Berkeley Homes"]
+    assert config.client_check.projects["R456"] == ["Berkeley", "Berkeley Homes"]
+    assert config.client_check.projects["J106309"] == ["MEP", "MBS", "L&Q"]
+    assert config.client_check.project_names["HPA"] == "Holloway Park"
+    assert config.client_check.projects["HPA"] == ["London Square"]
+    assert config.suitability_check.projects["WCR"] == [
+        "A - Construction",
+        "A - For Construction",
+        "S4 - Construction",
+        "S4 - For Construction",
+        "S5 - Construction",
+        "S5 - For Construction",
+    ]
     assert "S5 - For Construction" in config.suitability_check.suggested
     assert config.suitability_check.suggested == config.suitability_check.projects["R459"]
+    assert "HPA" in config.suitability_check.projects
+    assert config.suitability_check.project_names["HPA"] == "Holloway Park"
+    assert config.suitability_check.projects["HPA"] == config.suitability_check.projects["R459"]
 
 
 def test_barking_riverside_uses_project_dropdown(tmp_path: Path, config_dir: Path):
@@ -147,6 +167,7 @@ def test_barking_riverside_uses_project_dropdown(tmp_path: Path, config_dir: Pat
         title="Ground Floor GA",
         revision="C01",
         suitability="S4 - Suitable for Other Stage Approvals",
+        client="MEP",
     )
     result = check_pdf(pdf, load_config(config_dir))
     assert CheckStatus.SUITABILITY_ERROR not in result.issues
@@ -154,6 +175,61 @@ def test_barking_riverside_uses_project_dropdown(tmp_path: Path, config_dir: Pat
     assert result.purpose_list_name == "Barking Riverside"
     assert "CR - Construction Record" in result.designer_purpose_values
     assert "S5 - For Construction" not in result.designer_purpose_values
+
+
+def test_hpa_uses_standard_purpose_whitelist(tmp_path: Path, config_dir: Path):
+    pdf = write_bottom_right_pdf(
+        tmp_path / "HPA-MBS-D3-LG-DR-X-55103-P01.pdf",
+        document_reference="HPA-MBS-D3-LG-DR-X-55103",
+        title="Lighting layout",
+        revision="P01",
+        suitability="S3 - For Review & Comment",
+        client="London Square",
+    )
+    config = load_config(config_dir)
+    result = check_pdf(pdf, config)
+    assert CheckStatus.SUITABILITY_ERROR not in result.issues
+    assert result.purpose_list_official is True
+    assert result.purpose_list_name == "Holloway Park"
+    assert result.designer_purpose_values == config.suitability_check.projects["R459"]
+
+
+def test_wcr_uses_construction_purpose_whitelist(tmp_path: Path, config_dir: Path):
+    pdf = write_bottom_right_pdf(
+        tmp_path / "WCR-MBS-B7-XX-DR-M-5301-C01.pdf",
+        document_reference="WCR-MBS-B7-XX-DR-M-5301",
+        title="Mechanical Services Layout",
+        revision="C01",
+        suitability="A - Construction",
+        client="Seven Capital Woodrow",
+    )
+    result = check_pdf(pdf, load_config(config_dir))
+    assert CheckStatus.SUITABILITY_ERROR not in result.issues
+    assert CheckStatus.PURPOSE_MISMATCH not in result.issues
+    assert result.purpose_list_official is True
+    assert result.purpose_list_name == "West Cromwell Road"
+    assert result.designer_purpose_values == [
+        "A - Construction",
+        "A - For Construction",
+        "S4 - Construction",
+        "S4 - For Construction",
+        "S5 - Construction",
+        "S5 - For Construction",
+    ]
+
+
+def test_wcr_rejects_review_purpose(tmp_path: Path, config_dir: Path):
+    pdf = write_bottom_right_pdf(
+        tmp_path / "WCR-MBS-B7-XX-DR-M-5301-P01.pdf",
+        document_reference="WCR-MBS-B7-XX-DR-M-5301",
+        title="Mechanical Services Layout",
+        revision="P01",
+        suitability="S3 - For Review & Comment",
+        client="Seven Capital Woodrow",
+    )
+    result = check_pdf(pdf, load_config(config_dir))
+    assert CheckStatus.SUITABILITY_ERROR in result.issues
+    assert "S3 - For Review & Comment" not in result.designer_purpose_values
 
 
 def test_pdf_accepted_iso_status(tmp_path: Path, config_dir: Path):

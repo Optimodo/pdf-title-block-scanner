@@ -413,3 +413,22 @@ def test_construction_upgrade_tells_designer_to_move_to_c01():
     assert "P05" in text
     assert "S5" not in text
     assert "S4" not in text
+    assert "does not match" not in text.lower()
+
+
+def test_construction_upgrade_notes_when_current_p_has_construction_purpose():
+    result = _base(filename_rev="P05", titleblock_rev="P05")
+    result.titleblock.suitability = "S5 - CONSTRUCTION"
+    result.status = CheckStatus.MULTIPLE_ISSUES
+    result.issues = [CheckStatus.PURPOSE_MISMATCH, CheckStatus.PORTAL_REVISION]
+    result.portal_revision = "P04"
+    result.portal_status = "B Proceed with Comments"
+    result.construction_upgrade_required = True
+    text = designer_actions(result)
+    assert "'C01'" in text
+    assert "P05" in text
+    assert "S5 - CONSTRUCTION" in text
+    assert "does not match" in text.lower()
+    assert "construction purpose is then correct" in text.lower()
+    assert "rather than construction" not in text.lower()
+    assert "1. " not in text

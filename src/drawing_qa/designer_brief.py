@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from drawing_qa.client import format_allowed_clients
 from drawing_qa.history import history_first_row
 from drawing_qa.models import CheckStatus, DocumentResult, FieldComparison
 from drawing_qa.suitability import suitability_is_allowed
@@ -277,6 +278,8 @@ def _issue_actions(
         return [_portal_revision_action(result)]
     if status == CheckStatus.PORTAL_TITLE:
         return [_portal_title_action(result)]
+    if status == CheckStatus.CLIENT_ERROR:
+        return [_client_action(result)]
     if status == CheckStatus.ERROR:
         return ["This PDF could not be opened. Re-export the drawing."]
     return []
@@ -289,11 +292,26 @@ def _current_revision(result: DocumentResult) -> str:
 def _construction_upgrade_action(result: DocumentResult) -> str:
     current = _quote(_current_revision(result))
     status = result.portal_status or "A or B"
-    return (
+    text = (
         f"The portal list has this drawing at {_quote(result.portal_revision)} with status "
         f"{_quote(status)}. That P issue is approved, so this issue should be 'C01' "
         f"(first construction issue). The drawing currently shows {current}."
     )
+    purpose = (result.titleblock.suitability or "").strip()
+    issues = [item for item in result.issues if item != CheckStatus.MULTIPLE_ISSUES]
+    if CheckStatus.PURPOSE_MISMATCH not in issues:
+        return text
+    if purpose:
+        text += (
+            f" Current purpose of issue is {_quote(purpose)}; that does not match a P "
+            "revision. C01 is a construction issue, so a construction purpose is then correct."
+        )
+    else:
+        text += (
+            " The current revision and purpose of issue do not match. "
+            "C01 is a construction issue, so a construction purpose is then correct."
+        )
+    return text
 
 
 def _portal_revision_action(result: DocumentResult) -> str:
@@ -327,6 +345,20 @@ def _portal_title_action(result: DocumentResult) -> str:
     return (
         f"The portal list title is {_quote(result.portal_title)} and the title-block title is "
         f"{_quote(local)}. These should match, so one of them needs changing."
+    )
+
+
+def _client_action(result: DocumentResult) -> str:
+    expected = format_allowed_clients(result.allowed_clients)
+    current = (result.titleblock.client or "").strip()
+    if not expected:
+        return (
+            f"Change the client name in the title block. It currently shows {_quote(current)}."
+        )
+    if not current:
+        return f"Add the client name to the title block. For this project it should be {expected}."
+    return (
+        f"Change the client name in the title block from {_quote(current)} to {expected}."
     )
 
 

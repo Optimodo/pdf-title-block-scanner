@@ -22,6 +22,14 @@ class SpellCheckConfig:
 
 
 @dataclass
+class ClientCheckConfig:
+    enabled: bool = True
+    fail_on_error: bool = True
+    projects: dict[str, list[str]] = field(default_factory=dict)
+    project_names: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
 class SuitabilityCheckConfig:
     enabled: bool = True
     fail_on_error: bool = True
@@ -58,6 +66,7 @@ class AppConfig:
     layouts: list[TitleBlockLayout]
     spell_check: SpellCheckConfig | None = None
     suitability_check: SuitabilityCheckConfig | None = None
+    client_check: ClientCheckConfig | None = None
     preview: PreviewConfig | None = None
     document_list: DocumentListConfig | None = None
 
@@ -230,6 +239,22 @@ def load_config(config_dir: Path | None = None) -> AppConfig:
         suggested=suggested,
     )
 
+    clients_path = config_dir / "clients.yaml"
+    if not clients_path.is_file():
+        bundled_clients = bundled_config_dir() / "clients.yaml"
+        if bundled_clients.is_file():
+            clients_path = bundled_clients
+    clients_raw: dict = {}
+    if clients_path.is_file():
+        clients_raw = yaml.safe_load(clients_path.read_text(encoding="utf-8")) or {}
+    client_projects, client_names = _project_suitability_lists(clients_raw)
+    client_check = ClientCheckConfig(
+        enabled=bool(clients_raw.get("enabled", True)),
+        fail_on_error=bool(clients_raw.get("fail_on_error", True)),
+        projects=client_projects,
+        project_names=client_names,
+    )
+
     timing_cfg = settings.get("timing") or {}
     configure_timing(bool(timing_cfg.get("enabled", False)))
 
@@ -262,6 +287,7 @@ def load_config(config_dir: Path | None = None) -> AppConfig:
         layouts=layouts,
         spell_check=spell_check,
         suitability_check=suitability_check,
+        client_check=client_check,
         preview=preview,
         document_list=document_list,
     )

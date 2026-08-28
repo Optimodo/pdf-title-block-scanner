@@ -1,36 +1,37 @@
-id: mbs_right
-name: MBS right-hand title block
+# MBS title block along the bottom of portrait sheets (Status + Number +
+# Amendments). Distinct from mbs_right (landscape, Suitability) and
+# mbs_classic (Revision Notes, headings not in the text layer).
+id: mbs_bottom
+name: MBS bottom title block
 min_score: 0.75
 region:
-  left: 0.78
-  top: 0.48
+  left: 0.46
+  top: 0.88
   right: 1.0
   bottom: 1.0
 history:
-  expand_left: 0.0
-  expand_top: 0.12
+  relative_to: page
+  region:
+    left: 0.46
+    top: 0.93
+    right: 0.645
+    bottom: 1.0
   min_rows: 2
 anchors:
+  - STATUS
   - NUMBER
   - TITLE
   - REVISION
-  - SUITABILITY
   - AMENDMENTS
   - PROJECT
   - CLIENT
   - DESCRIPTION
   - BY
-  - DESIGNED BY
-  - DRAWN BY
-  - CHECKED BY
-  - SCALES
-  - PROJECT NO
-  - PROJECT NUMBER
 required_anchor_groups:
+  - [STATUS]
   - [NUMBER]
-  - [REVISION, REV]
-  - [SUITABILITY]
   - [TITLE]
+  - [REVISION]
 fields:
   document_reference:
     labels: [NUMBER, DRAWING NO, DRAWING NUMBER, DOCUMENT NUMBER]
@@ -44,8 +45,8 @@ fields:
     direction: auto
     pattern: "(?:[PC]\\d{2}|[A-Z]\\d?)"
   suitability:
-    labels: [SUITABILITY, STATUS, PURPOSE OF ISSUE]
-    direction: auto
+    labels: [STATUS, SUITABILITY, PURPOSE OF ISSUE]
+    direction: below
   date:
     labels: [DATE, ISSUE DATE]
     direction: auto

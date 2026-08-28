@@ -78,6 +78,7 @@ def check_pdf(path: Path, config: AppConfig) -> DocumentResult:
                     config.compare_rules,
                     config.spell_check,
                     config.suitability_check,
+                    config.client_check,
                 )
             if (config.preview and config.preview.all_files) or result.status != CheckStatus.MATCH:
                 with timing_span("preview"):

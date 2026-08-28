@@ -184,4 +184,29 @@ projects:
       - S3 - Review and Comment
       - S4 - Suitable for Building Control Approval
       - S4 - Suitable for Other Stage Approvals
+  WCR:
+    name: West Cromwell Road
+    values:
+      - A - Construction
+      - A - For Construction
+      - S4 - Construction
+      - S4 - For Construction
+      - S5 - Construction
+      - S5 - For Construction
+  HPA:
+    name: Holloway Park
+    values:
+      - A - Contractual
+      - AB - As Builts
+      - D2 - For Tender
+      - P1 - Preliminary Issue
+      - S1 - For Coordination
+      - S2 - For Information
+      - S2 - Information
+      - S3 - For Review & Comment
+      - S3 - Review & Comment
+      - S4 - For Stage Approval
+      - S4 - Stage Approval
+      - S5 - For Construction
+      - S5 - Construction
 

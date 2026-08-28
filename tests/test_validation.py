@@ -177,12 +177,14 @@ def test_dotted_sheet_suffixes_are_not_duplicates(tmp_path: Path, config_dir: Pa
         document_reference="R459-MBS-DZ-ZZ-DR-W-51333.1",
         title="Sheet One",
         revision="C01",
+        client="Berkeley",
     )
     pdf2 = write_bottom_right_pdf(
         tmp_path / "R459-MBS-DZ-ZZ-DR-W-51333.2 - Sheet Two.pdf",
         document_reference="R459-MBS-DZ-ZZ-DR-W-51333.2",
         title="Sheet Two",
         revision="C01",
+        client="Berkeley",
     )
     results = check_paths([pdf1, pdf2], load_config(config_dir))
     assert all(r.status == CheckStatus.MATCH for r in results)
@@ -198,6 +200,7 @@ def test_dwg_pairs_dotted_pdf_number_with_hyphen_dwg(tmp_path: Path, config_dir:
         document_reference="R459-MBS-DZ-ZZ-DR-W-51333.1",
         title="Sheet One",
         revision="C01",
+        client="Berkeley",
     )
     dwg = tmp_path / "R459-MBS-DZ-ZZ-DR-W-51333-1.dwg"
     dwg.write_text("")
@@ -243,6 +246,7 @@ def test_dwg_report_tab_lists_sheet_suffix_and_missing(tmp_path: Path, config_di
         document_reference="R459-MBS-DZ-ZZ-DR-W-51333.1",
         title="Sheet One",
         revision="C01",
+        client="Berkeley",
     )
     pdf_missing = write_bottom_right_pdf(
         tmp_path / "ABC-WXY-ZZ-00-DR-A-0002-P01.pdf",

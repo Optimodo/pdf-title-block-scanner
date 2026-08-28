@@ -20,6 +20,7 @@ class CheckStatus(StrEnum):
     DWG_ISSUE = "DWG_ISSUE"
     PORTAL_REVISION = "PORTAL_REVISION"
     PORTAL_TITLE = "PORTAL_TITLE"
+    CLIENT_ERROR = "CLIENT_ERROR"
     FILENAME_PARSE_ERROR = "FILENAME_PARSE_ERROR"
     ERROR = "ERROR"
     MULTIPLE_ISSUES = "MULTIPLE_ISSUES"
@@ -214,6 +215,7 @@ class TitleBlockFields:
     revision: str | None = None
     suitability: str | None = None
     date: str | None = None
+    client: str | None = None
     fields: dict[str, ExtractedField] = field(default_factory=dict)
     history: RevisionHistory = field(default_factory=RevisionHistory)
     notes: list[str] = field(default_factory=list)
@@ -263,6 +265,7 @@ class DocumentResult:
     portal_blocks_upload: bool = False
     proposed_upload_revision: str | None = None
     construction_upgrade_required: bool = False
+    allowed_clients: list[str] = field(default_factory=list)
 
     def mismatch_field_labels(self) -> list[str]:
         """Human names of filename vs title-block fields that disagreed."""

@@ -34,6 +34,7 @@ def write_bottom_right_pdf(
     revision: str,
     suitability: str | None = None,
     date: str | None = None,
+    client: str | None = None,
     history: list[tuple[str, str, str]] | None = None,
 ) -> Path:
     doc, page = _page()
@@ -50,6 +51,9 @@ def write_bottom_right_pdf(
     if suitability:
         page.insert_text((960, 750), "STATUS", fontsize=8)
         page.insert_text((1020, 750), suitability, fontsize=10)
+    if client:
+        page.insert_text((760, 780), "CLIENT", fontsize=8)
+        page.insert_text((820, 780), client, fontsize=11)
     if history:
         _draw_history(page, history)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -66,6 +70,7 @@ def write_bottom_strip_pdf(
     revision: str,
     suitability: str | None = None,
     date: str | None = None,
+    client: str | None = None,
 ) -> Path:
     doc, page = _page()
     page.draw_rect(pymupdf.Rect(30, 700, 1160, 825), color=(0, 0, 0), width=1)
@@ -81,6 +86,113 @@ def write_bottom_strip_pdf(
     if suitability:
         page.insert_text((700, 730), "STATUS", fontsize=8)
         page.insert_text((760, 730), suitability, fontsize=10)
+    if client:
+        page.insert_text((50, 810), "CLIENT", fontsize=8)
+        page.insert_text((120, 810), client, fontsize=11)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    doc.save(path)
+    doc.close()
+    return path
+
+
+def write_mbs_classic_pdf(
+    path: Path,
+    *,
+    document_reference: str,
+    title: str,
+    revision: str,
+    suitability: str = "S3 - Review and Comment",
+    date: str = "27/08/26",
+    client: str = "Berkeley Homes",
+    history: list[tuple[str, str, str]] | None = None,
+) -> Path:
+    """Older MBS right-hand block: values sit in page clips; headings are not text."""
+    width, height = 3370.0, 2384.0
+    doc = pymupdf.open()
+    page = doc.new_page(width=width, height=height)
+
+    def put(xf: float, yf: float, text: str, size: float = 12) -> None:
+        page.insert_text((xf * width, yf * height), text, fontsize=size)
+
+    rows = history or [
+        (revision, date, suitability),
+        ("P01", "04/08/26", "S3 - Review and comment"),
+    ]
+    y = 0.705
+    for rev, when, desc in rows:
+        put(0.859, y, rev, 9)
+        put(0.871, y, when, 9)
+        put(0.891, y, desc, 9)
+        y += 0.007
+    put(0.859, 0.725, "Rev", 8)
+    put(0.872, 0.725, "Date", 8)
+    put(0.892, 0.725, "Revision", 8)
+    put(0.906, 0.725, "Notes", 8)
+    put(0.980, 0.725, "By", 8)
+    lines = title.split("\n")
+    put(0.874, 0.830, lines[0], 12)
+    if len(lines) > 1:
+        put(0.907, 0.839, lines[1], 12)
+    put(0.860, 0.860, suitability, 11)
+    put(0.863, 0.898, document_reference, 14)
+    put(0.976, 0.898, revision, 16)
+    if client:
+        put(0.874, 0.790, client, 10)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    doc.save(path)
+    doc.close()
+    return path
+
+
+def write_mbs_bottom_pdf(
+    path: Path,
+    *,
+    document_reference: str,
+    title: str,
+    revision: str,
+    suitability: str = "S5 - Construction",
+    date: str = "20.04.2026",
+    client: str = "Berkeley Homes",
+    history: list[tuple[str, str, str]] | None = None,
+) -> Path:
+    """Portrait MBS bottom title block (Status, Number, Amendments)."""
+    width, height = 2384.0, 3370.0
+    doc = pymupdf.open()
+    page = doc.new_page(width=width, height=height)
+
+    def put(xf: float, yf: float, text: str, size: float = 12) -> None:
+        page.insert_text((xf * width, yf * height), text, fontsize=size)
+
+    put(0.816, 0.894, "Project", 8)
+    put(0.853, 0.900, "Oval Village - Block C", 12)
+    put(0.816, 0.910, "Title", 8)
+    put(0.862, 0.925, title, 12)
+    put(0.647, 0.920, "Status", 8)
+    put(0.691, 0.928, suitability, 14)
+    put(0.704, 0.944, "Date", 8)
+    put(0.730, 0.945, date, 10)
+    put(0.816, 0.941, "Client", 8)
+    put(0.877, 0.948, client, 10)
+    rows = history or [
+        (revision, "27.08.26", "S3 - Added landing valve"),
+        ("P01", "20.04.26", "S3 - Review and Comment"),
+    ]
+    y = 0.957
+    for rev, when, desc in rows:
+        put(0.479, y, rev, 9)
+        put(0.492, y, when, 9)
+        put(0.510, y, desc, 9)
+        put(0.635, y, "JG", 9)
+        y += 0.006
+    put(0.479, 0.971, "Rev", 8)
+    put(0.494, 0.971, "Date", 8)
+    put(0.557, 0.971, "Description", 8)
+    put(0.636, 0.971, "By", 8)
+    put(0.786, 0.963, "Revision", 8)
+    put(0.785, 0.973, revision, 16)
+    put(0.648, 0.963, "Number", 8)
+    put(0.660, 0.975, document_reference, 12)
+    put(0.547, 0.980, "Amendments", 9)
     path.parent.mkdir(parents=True, exist_ok=True)
     doc.save(path)
     doc.close()
@@ -95,6 +207,7 @@ def write_mbs_right_pdf(
     revision: str,
     suitability: str = "S3",
     date: str = "14.08.26",
+    client: str = "Berkeley",
     history: list[tuple[str, str, str]] | None = None,
 ) -> Path:
     """Landscape sheet with an MBS-style right-hand title block (visual coords)."""
@@ -122,7 +235,7 @@ def write_mbs_right_pdf(
         page.insert_text((1923, title_y), line, fontsize=12)
         title_y += 28
     page.insert_text((1918, 1296), "Client", fontsize=8)
-    page.insert_text((2085, 1320), "Berkeley", fontsize=10)
+    page.insert_text((2085, 1320), client, fontsize=10)
     page.insert_text((1914, 1446), "Suitability", fontsize=8)
     page.insert_text((2041, 1468), "REVIEW & COMMENT", fontsize=11)
     page.insert_text((2271, 1468), suitability, fontsize=12)

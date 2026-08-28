@@ -165,6 +165,7 @@ _HISTORY_CHROME = {
     "REVISION",
     "DATE",
     "DESCRIPTION",
+    "REVISION NOTES",
     "BY",
     "AMENDMENTS",
     "PROJECT",

@@ -248,6 +248,7 @@ def _extract_layout_fields(page, layout: TitleBlockLayout, score: float) -> Titl
     result.revision = (extracted.get("revision") or ExtractedField("revision")).value
     result.suitability = (extracted.get("suitability") or ExtractedField("suitability")).value
     result.date = (extracted.get("date") or ExtractedField("date")).value
+    result.client = (extracted.get("client") or ExtractedField("client")).value
     if result.history.rows and result.revision:
         current = normalize_revision_token(result.revision)
         for row in result.history.rows:

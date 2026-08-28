@@ -41,7 +41,7 @@ OCR for scanned PDFs is out of scope for this version. Sheets need a selectable 
 5. **TBCheckRename:** files are renamed automatically to `{doc-ref}_{title}_{revision}` from the title block; the Excel report lists original names, new names, and rename results.
 6. Open the `{project}_{ddmmyy}.xlsx` report in the same folder to review results.
 
-Optional: copy a `config\` folder next to the exe to override bundled title-block layouts, the purpose-of-issue whitelist (`suitability.yaml`), and portal document-list column names (`document_lists.yaml`). If that folder is missing, the exe uses the files baked into it.
+Optional: copy a `config\` folder next to the exe to override bundled title-block layouts, the purpose-of-issue whitelist (`suitability.yaml`), title-block client names (`clients.yaml`), and portal document-list column names (`document_lists.yaml`). If that folder is missing, the exe uses the files baked into it.
 
 The exe looks at PDFs in **that folder**, not subfolders (unless `--recursive` is specified). It does not use the network.
 
@@ -108,7 +108,7 @@ Revision pattern and field count are set in [`src/drawing_qa/default_config/sett
 
 ## Title-block layouts
 
-Default layouts live in [`src/drawing_qa/default_config/title_blocks/`](src/drawing_qa/default_config/title_blocks/). Purpose-of-issue checking uses [`src/drawing_qa/default_config/suitability.yaml`](src/drawing_qa/default_config/suitability.yaml). Add a `projects:` list keyed by the ISO project code (first filename field, e.g. `R456` Trillium, `R459` Oval C+D, `J106309` Barking Riverside). Projects with no list use `suggested:` (Oval C+D) as the whitelist. P vs C pairing (`PURPOSE_MISMATCH`) is the `purpose:` block in that same file. A revision-history description is only compared with the current purpose when that row matches the whitelist; other history text is treated as a note. To customize a deployed copy, put YAML files in `config\title_blocks\` next to the exe and include `config\settings.yaml` plus `config\suitability.yaml`.
+Default layouts live in [`src/drawing_qa/default_config/title_blocks/`](src/drawing_qa/default_config/title_blocks/). That folder includes the current MBS right-hand block (`mbs_right`), the older MBS classic block (`mbs_classic`, headings not selectable so values are page clips), and the portrait MBS bottom block (`mbs_bottom`, Status / Number / Amendments). Purpose-of-issue checking uses [`src/drawing_qa/default_config/suitability.yaml`](src/drawing_qa/default_config/suitability.yaml). Add a `projects:` list keyed by the ISO project code (first filename field, e.g. `R456` Trillium, `R459` Oval C+D, `J106309` Barking Riverside). Projects with no list use `suggested:` (Oval C+D) as the whitelist. P vs C pairing (`PURPOSE_MISMATCH`) is the `purpose:` block in that same file. A revision-history description is only compared with the current purpose when that row matches the whitelist; other history text is treated as a note. To customize a deployed copy, put YAML files in `config\title_blocks\` next to the exe and include `config\settings.yaml` plus `config\suitability.yaml`.
 
 Typical workflow for a new style:
 
@@ -152,6 +152,7 @@ Each data row is medium height and includes a **preview strip**: five tight crop
 | `DWG_ISSUE` | DWG missing, or paired DWG uses `-1` instead of `.1` (or the reverse) |
 | `PORTAL_REVISION` | Revision is not the next issue after the portal document list (or not a valid first issue if the drawing is new) |
 | `PORTAL_TITLE` | Title disagrees with the portal document list |
+| `CLIENT_ERROR` | Title-block client name is missing or not on the project list (`clients.yaml`) |
 | `ERROR` | PDF could not be read |
 | `MULTIPLE_ISSUES` | More than one issue; column A lists them all |
 

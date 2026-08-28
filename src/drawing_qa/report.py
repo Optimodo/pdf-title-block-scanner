@@ -44,6 +44,7 @@ STATUS_FILL = {
     CheckStatus.DWG_ISSUE: PatternFill("solid", fgColor="BDD7EE"),
     CheckStatus.PORTAL_REVISION: PatternFill("solid", fgColor="F4B183"),
     CheckStatus.PORTAL_TITLE: PatternFill("solid", fgColor="F8CBAD"),
+    CheckStatus.CLIENT_ERROR: PatternFill("solid", fgColor="F8CBAD"),
     CheckStatus.FILENAME_PARSE_ERROR: PatternFill("solid", fgColor="F4B183"),
     CheckStatus.ERROR: PatternFill("solid", fgColor="D9D9D9"),
     CheckStatus.MULTIPLE_ISSUES: PatternFill("solid", fgColor="C65911"),
@@ -84,6 +85,7 @@ COLUMNS = [
     ("Rev (file)", 11),
     ("Rev (drawing)", 13),
     ("Status / suitability", 25),
+    ("Client", 22),
     ("Date", 12),
     ("History latest", 40),
     ("History check", 14),
@@ -93,10 +95,10 @@ COLUMNS = [
     ("DWG pairing", 35),
     ("Notes", 60),
 ]
-PREVIEW_COL = 14
-HISTORY_CHECK_COL = 13
-RENAME_RESULT_COL = 16
-DWG_PAIRING_COL = 17
+PREVIEW_COL = 15
+HISTORY_CHECK_COL = 14
+RENAME_RESULT_COL = 17
+DWG_PAIRING_COL = 18
 
 RENAME_FILL = {
     "Renamed": PatternFill("solid", fgColor="BDD7EE"),
@@ -314,6 +316,7 @@ def _row(result: DocumentResult) -> list[object]:
         result.filename.revision or "",
         result.titleblock.revision or "",
         result.titleblock.suitability or "",
+        result.titleblock.client or "",
         result.titleblock.date or "",
         _latest_history_label(result),
         _history_check(result),
@@ -455,6 +458,7 @@ def _write_summary(ws: Worksheet, results: list[DocumentResult]) -> None:
         CheckStatus.DWG_ISSUE: "DWG missing, or paired DWG uses -1 instead of .1 (or the reverse)",
         CheckStatus.PORTAL_REVISION: "Revision is not the next issue after the portal document list (or not a valid first issue if the drawing is new to the portal)",
         CheckStatus.PORTAL_TITLE: "Title disagrees with the portal document list",
+        CheckStatus.CLIENT_ERROR: "Title-block client name is missing or not on the project list (clients.yaml)",
         CheckStatus.FILENAME_PARSE_ERROR: "Filename is not ISO 19650; title-block values are still shown",
         CheckStatus.ERROR: "PDF could not be read",
         CheckStatus.MULTIPLE_ISSUES: "More than one issue — see Notes and the status list in column A",

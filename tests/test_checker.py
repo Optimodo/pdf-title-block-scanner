@@ -7,6 +7,8 @@ from drawing_qa.report import DESIGNER_HEADER_ROW, write_report
 from tests.pdf_fixtures import (
     write_bottom_right_pdf,
     write_bottom_strip_pdf,
+    write_mbs_bottom_pdf,
+    write_mbs_classic_pdf,
     write_mbs_right_pdf,
     write_plain_pdf,
 )
@@ -152,22 +154,23 @@ def test_excel_report_created(tmp_path: Path, config_dir: Path):
     data = wb["All documents"]
     assert data["F1"].value == "Filename title"
     assert data["J1"].value == "Status / suitability"
+    assert data["K1"].value == "Client"
     assert data.column_dimensions["C"].width == 35
     assert data.column_dimensions["D"].width == 35
     assert data.column_dimensions["E"].width == 35
     assert data.column_dimensions["F"].width == 35
     assert data.column_dimensions["G"].width == 35
     assert data.column_dimensions["J"].width == 25
-    assert data.column_dimensions["L"].width == 40
-    # Column O is New filename (45); Rename result is P; Notes moved to R (60)
-    assert data["O1"].value == "New filename"
-    assert data["P1"].value == "Rename result"
-    assert data.column_dimensions["O"].width == 45
-    assert data.column_dimensions["R"].width == 60
+    assert data.column_dimensions["M"].width == 40
+    # Column P is New filename (45); Rename result is Q; Notes moved to S (60)
+    assert data["P1"].value == "New filename"
+    assert data["Q1"].value == "Rename result"
+    assert data.column_dimensions["P"].width == 45
+    assert data.column_dimensions["S"].width == 60
     assert data["A1"].font.size == 10
     assert data["C2"].font.size == 10
     assert data["A1"].alignment.horizontal == "center"
-    assert data["O1"].alignment.horizontal == "center"
+    assert data["P1"].alignment.horizontal == "center"
 
 
 def test_history_latest_used_not_older_rows(tmp_path: Path, config_dir: Path):
@@ -325,6 +328,50 @@ def test_history_whitelist_purpose_must_match(tmp_path: Path, config_dir: Path):
     assert any("S4" in note for note in result.notes)
 
 
+def test_detects_mbs_bottom_title_block(tmp_path: Path, config_dir: Path):
+    pdf = write_mbs_bottom_pdf(
+        tmp_path / "R459-MBS-CZ-XX-DR-W-55801-C01.pdf",
+        document_reference="R459-MBS-CZ-XX-DR-W-55801",
+        title="Dry Riser Schematic",
+        revision="C01",
+        suitability="S5 - Construction",
+        date="27.08.26",
+    )
+    result = check_pdf(pdf, load_config(config_dir))
+    assert result.titleblock.layout_id == "mbs_bottom"
+    assert result.titleblock.document_reference == "R459-MBS-CZ-XX-DR-W-55801"
+    assert result.titleblock.revision == "C01"
+    assert result.titleblock.title == "Dry Riser Schematic"
+    assert result.titleblock.suitability == "S5 - Construction"
+    assert result.titleblock.date == "27.08.26"
+    assert result.titleblock.client == "Berkeley Homes"
+    assert result.titleblock.history.latest is not None
+    assert result.titleblock.history.latest.revision == "C01"
+    assert result.status == CheckStatus.MATCH
+
+
+def test_detects_mbs_classic_title_block(tmp_path: Path, config_dir: Path):
+    pdf = write_mbs_classic_pdf(
+        tmp_path / "R459-MBS-DZ-XX-DR-W-54002-P02.pdf",
+        document_reference="R459-MBS-DZ-XX-DR-W-54002",
+        title="Oval Village - Block D1 - LTHW Schematic",
+        revision="P02",
+        suitability="S3 - Review and Comment",
+        date="27/08/26",
+    )
+    result = check_pdf(pdf, load_config(config_dir))
+    assert result.titleblock.layout_id == "mbs_classic"
+    assert result.titleblock.document_reference == "R459-MBS-DZ-XX-DR-W-54002"
+    assert result.titleblock.revision == "P02"
+    assert result.titleblock.title == "Oval Village - Block D1 - LTHW Schematic"
+    assert result.titleblock.suitability == "S3 - Review and Comment"
+    assert result.titleblock.date == "27/08/26"
+    assert result.titleblock.client == "Berkeley Homes"
+    assert result.titleblock.history.latest is not None
+    assert result.titleblock.history.latest.revision == "P02"
+    assert result.status == CheckStatus.MATCH
+
+
 def test_detects_mbs_right_title_block(tmp_path: Path, config_dir: Path):
     pdf = write_mbs_right_pdf(
         tmp_path / "R459-MBS-DZ-BA-DR-W-55100-P01.pdf",
@@ -341,6 +388,7 @@ def test_detects_mbs_right_title_block(tmp_path: Path, config_dir: Path):
     assert result.titleblock.title == "Block D Commercial Sprinkler layout Level LG Sheet 1 of 4"
     assert result.titleblock.suitability == "S3 - REVIEW & COMMENT"
     assert result.titleblock.date == "14.08.26"
+    assert result.titleblock.client == "Berkeley"
     assert result.titleblock.history.latest is not None
     assert result.titleblock.history.latest.revision == "P01"
     assert result.status == CheckStatus.MATCH
@@ -361,6 +409,32 @@ def test_real_mbs_drawing_if_present(config_dir: Path):
     assert result.titleblock.history.latest.revision == "P01"
     assert result.status == CheckStatus.MATCH
     assert result.confidence == Confidence.HIGH
+
+
+def test_real_mbs_bottom_drawing_if_present(config_dir: Path):
+    sample = Path("test files") / "R459-MBS-CZ-XX-DR-W-55801-C01.pdf"
+    if not sample.is_file():
+        return
+    result = check_pdf(sample, load_config(config_dir))
+    assert result.titleblock.layout_id == "mbs_bottom"
+    assert result.titleblock.document_reference == "R459-MBS-CZ-XX-DR-W-55801"
+    assert result.titleblock.revision == "C01"
+    assert result.titleblock.title == "Dry Riser Schematic"
+    assert result.titleblock.suitability
+    assert "CONSTRUCTION" in result.titleblock.suitability.upper()
+
+
+def test_real_mbs_classic_drawing_if_present(config_dir: Path):
+    sample = Path("test files") / "R459-MBS-DZ-XX-DR-W-54002.pdf"
+    if not sample.is_file():
+        return
+    result = check_pdf(sample, load_config(config_dir))
+    assert result.titleblock.layout_id == "mbs_classic"
+    assert result.titleblock.document_reference == "R459-MBS-DZ-XX-DR-W-54002"
+    assert result.titleblock.revision == "P02"
+    assert result.titleblock.title and "LTHW" in result.titleblock.title
+    assert result.titleblock.suitability and result.titleblock.suitability.startswith("S3")
+    assert result.status == CheckStatus.MATCH
 
 
 def test_real_multiline_title_and_suitability_if_present(config_dir: Path):

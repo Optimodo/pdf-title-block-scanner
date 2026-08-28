@@ -35,3 +35,6 @@ fields:
   date:
     labels: [DATE, ISSUE DATE, ISSUED]
     direction: auto
+  client:
+    labels: [CLIENT, CLIENT NAME]
+    direction: auto

@@ -1,0 +1,68 @@
+# Older MBS right-hand title block. Field headings (Project, Drawing Title,
+# Drawing Ref, …) are CAD geometry, not selectable text, so current values
+# are read from page clips. Identified by the Revision Notes history columns.
+id: mbs_classic
+name: MBS classic right-hand title block
+min_score: 0.75
+region:
+  left: 0.84
+  top: 0.68
+  right: 1.0
+  bottom: 1.0
+history:
+  expand_left: 0.0
+  expand_top: 0.0
+  min_rows: 2
+anchors:
+  - REVISION NOTES
+  - REV
+  - DATE
+  - BY
+required_anchor_groups:
+  - [REVISION NOTES]
+  - [REV]
+fields:
+  document_reference:
+    relative_to: page
+    clip:
+      left: 0.85
+      top: 0.882
+      right: 0.97
+      bottom: 0.915
+    pattern: "[A-Z0-9]+(?:-[A-Z0-9]+){5}-[0-9]+(?:-[0-9]+)?(?:\\s*[.][0-9]+)?"
+  title:
+    relative_to: page
+    clip:
+      left: 0.85
+      top: 0.812
+      right: 1.0
+      bottom: 0.852
+  revision:
+    relative_to: page
+    clip:
+      left: 0.955
+      top: 0.882
+      right: 1.0
+      bottom: 0.915
+    pattern: "(?:[PC]\\d{2}|[A-Z]\\d?)"
+  suitability:
+    relative_to: page
+    clip:
+      left: 0.85
+      top: 0.848
+      right: 1.0
+      bottom: 0.875
+  date:
+    relative_to: page
+    clip:
+      left: 0.94
+      top: 0.865
+      right: 1.0
+      bottom: 0.892
+  client:
+    relative_to: page
+    clip:
+      left: 0.85
+      top: 0.775
+      right: 1.0
+      bottom: 0.808
