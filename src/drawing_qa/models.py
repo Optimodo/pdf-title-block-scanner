@@ -156,6 +156,7 @@ class TitleBlockLayout:
     fields: dict[str, FieldSpec]
     min_score: float = 0.7
     history: HistorySpec = field(default_factory=HistorySpec)
+    orientation: str = ""
 
 
 @dataclass

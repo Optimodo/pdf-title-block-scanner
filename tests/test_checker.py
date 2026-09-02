@@ -10,6 +10,7 @@ from tests.pdf_fixtures import (
     write_mbs_bottom_pdf,
     write_mbs_classic_pdf,
     write_mbs_right_pdf,
+    write_mbs_right_portrait_pdf,
     write_plain_pdf,
 )
 
@@ -394,6 +395,25 @@ def test_detects_mbs_right_title_block(tmp_path: Path, config_dir: Path):
     assert result.status == CheckStatus.MATCH
 
 
+def test_detects_mbs_right_portrait_title_block(tmp_path: Path, config_dir: Path):
+    pdf = write_mbs_right_portrait_pdf(
+        tmp_path / "WCR-MBS-XX-ZZ-DR-E-6000-C04.pdf",
+        document_reference="WCR-MBS-XX-ZZ-DR-E-6000",
+        title="Typical Electrical Setting Out Elevations",
+        revision="C04",
+        suitability="S4 - Construction",
+        date="11/05/2026",
+        client="Seven Capital Woodrow",
+    )
+    result = check_pdf(pdf, load_config(config_dir))
+    assert result.titleblock.layout_id == "mbs_right_portrait"
+    assert result.titleblock.document_reference == "WCR-MBS-XX-ZZ-DR-E-6000"
+    assert result.titleblock.revision == "C04"
+    assert result.titleblock.title == "Typical Electrical Setting Out Elevations"
+    assert result.titleblock.client == "Seven Capital Woodrow"
+    assert CheckStatus.UNDETECTED not in result.issues
+
+
 def test_real_mbs_drawing_if_present(config_dir: Path):
     sample = Path("test files") / "R459-MBS-DZ-BA-DR-W-55100.pdf"
     if not sample.is_file():
@@ -480,3 +500,19 @@ def test_iter_pdfs_is_not_recursive(tmp_path: Path):
     assert [p.name for p in found] == ["ABC-WXY-ZZ-00-DR-A-0001-P01.pdf"]
     found_all = iter_pdfs(tmp_path, recursive=True)
     assert len(found_all) == 2
+
+
+def test_real_wcr_b4_kitchen_overlapping_title_if_present(config_dir: Path):
+    sample = Path(
+        r"c:\Users\MikeMcLean\OneDrive - Malcolm Building Services Ltd"
+        r"\Documents\MBS\Proj\WCR\up\02-09-26\kitchens"
+        r"\WCR-MBS-B4-ZZ-DR-E-6201.pdf"
+    )
+    if not sample.is_file():
+        return
+    result = check_pdf(sample, load_config(config_dir))
+    assert result.titleblock.layout_id == "mbs_right"
+    assert result.titleblock.title.startswith("B4 - Kitchen Electrical Setting-out")
+    assert "Layout" in (result.titleblock.title or "")
+    assert "B4-1A" in (result.titleblock.title or "")
+

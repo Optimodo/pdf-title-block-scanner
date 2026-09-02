@@ -208,6 +208,12 @@ def get_mep_construction_terms() -> set[str]:
         "apartments",
         "apts",
         "apt",
+        "dup",  # Duplex
+        "duplex",
+        "duplexes",
+        "th",  # Townhouse
+        "townhouse",
+        "townhouses",
         "resi",  # Residential
         "residential",
         "communal",

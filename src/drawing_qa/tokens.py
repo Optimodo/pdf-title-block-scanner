@@ -88,7 +88,12 @@ def fold_latin_lookalikes(text: str) -> str:
 
 
 def normalize_revision_token(text: str) -> str:
-    return fold_latin_lookalikes(text.strip()).upper()
+    """Uppercase, map lookalike letters, and drop leading/trailing dots.
+
+    Portal dumps sometimes mark a QA-rejected re-upload as ``.C04`` or ``C01.``.
+    """
+    cleaned = fold_latin_lookalikes(text.strip()).upper()
+    return cleaned.strip(".")
 
 
 def is_revision_token(text: str) -> bool:

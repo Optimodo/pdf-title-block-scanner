@@ -246,11 +246,18 @@ def _below(
     band_left = x0 - left_pad
     # Titles often span most of the title-block width, far beyond the label.
     band_right = x1 + max(width * 2.5, 400.0)
+    overlap_slop = max(height_of(label_words) * 0.5, 4.0)
     chosen: list[Word] = []
     for word in words:
         if word in label_words:
             continue
-        if word.y0 < y1 - 1:
+        # Entirely above the heading.
+        if word.y1 <= y1 - 1:
+            continue
+        # Same-line neighbours (REV beside NUMBER) stay excluded. Large title
+        # glyphs on A0 plots overlap the heading but extend well below it.
+        extends_below = word.y1 > y1 + overlap_slop
+        if word.y0 < y1 - 1 and not extends_below:
             continue
         if word.x1 < band_left or word.x0 > band_right:
             continue

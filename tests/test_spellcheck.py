@@ -37,6 +37,18 @@ def test_mep_terms_not_flagged_as_errors(tmp_path: Path, config_dir: Path):
     assert len(result.spelling_errors) == 0
 
 
+def test_dup_and_th_not_flagged(tmp_path: Path, config_dir: Path):
+    pdf = write_bottom_right_pdf(
+        tmp_path / "ABC-WXY-ZZ-00-DR-A-0001-P01.pdf",
+        document_reference="ABC-WXY-ZZ-00-DR-A-0001",
+        title="DUP and TH Apartment Type Layout",
+        revision="P01",
+    )
+    result = check_pdf(pdf, load_config(config_dir))
+    assert result.status == CheckStatus.MATCH
+    assert len(result.spelling_errors) == 0
+
+
 def test_technical_abbreviations_not_flagged(tmp_path: Path, config_dir: Path):
     """Test that common technical abbreviations are whitelisted."""
     pdf = write_bottom_right_pdf(

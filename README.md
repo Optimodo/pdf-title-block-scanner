@@ -1,6 +1,6 @@
 # Drawing title-block QA
 
-Drop **TBCheck.exe** or **TBCheckRename.exe** into a folder of construction drawing PDFs and double-click. Both scan every PDF in that folder and write **TBCheckReport.xlsx** next to the exe.
+Drop **TBCheck.exe**, **TBCheckRename.exe**, or **TBCheckCustom.exe** into a folder of construction drawing PDFs and double-click. Each scan writes an Excel report next to the exe.
 
 This follows the same “run where it sits” pattern as [mbs-file-tools](https://github.com/Optimodo/mbs-file-tools). Use that toolkit to strip names down to the document reference only. Use **TBCheckRename** in this project when you want names built from the **title-block** document reference, title, and revision (that needs the PDF scan).
 
@@ -8,6 +8,7 @@ This follows the same “run where it sits” pattern as [mbs-file-tools](https:
 | --- | --- | --- |
 | **TBCheck.exe** | Yes | Optional. If the filename document reference disagrees with the title block, you are prompted to fix it. The rest of the existing name is kept. |
 | **TBCheckRename.exe** | Yes | Automatic. Every PDF with a readable title-block document reference is renamed to `{doc-ref}_{title}_{revision}.pdf`. No prompt. |
+| **TBCheckCustom.exe** | Yes | Same optional rename prompt as TBCheck. Double-click shows a numbered menu of 12 QA checks to turn off or on, then runs. Flags (`--disable`, `--checks`) skip the menu. |
 
 The report always keeps **File (as scanned)** as the name at the start of the run. After a rename, **New filename** and **Rename result** show what is on disk (or why a rename was skipped). Notes also record `Renamed from … to …`.
 
@@ -33,13 +34,24 @@ OCR for scanned PDFs is out of scope for this version. Sheets need a selectable 
    python scripts/build_exe.py
    ```
 
-   That produces `dist\TBCheck.exe` and `dist\TBCheckRename.exe`.
+   That produces `dist\TBCheck.exe`, `dist\TBCheckRename.exe`, and `dist\TBCheckCustom.exe`.
 
 2. Copy the exe you want into the folder that contains the drawing PDFs.
 3. Double-click. A console window lists each file, then waits for Enter.
 4. **TBCheck:** if a filename document reference does not match the title block, you can preview and apply a fix (paired DWG files are renamed the same way).
 5. **TBCheckRename:** files are renamed automatically to `{doc-ref}_{title}_{revision}` from the title block; the Excel report lists original names, new names, and rename results.
 6. Open the `{project}_{ddmmyy}.xlsx` report in the same folder to review results.
+
+**TBCheckCustom** — 12 QA policy checks can be toggled. Double-click the exe for an on-screen menu (type a number or name, Enter to run). Or skip the menu from the command line:
+
+```bat
+TBCheckCustom.exe --disable portal-revision
+TBCheckCustom.exe --disable portal
+TBCheckCustom.exe --checks mismatch,spelling,client
+TBCheckCustom.exe --list-checks
+```
+
+`--disable` / `--enable` / `--checks` also work on `drawing-qa check` and the other exes. Extraction failures (UNDETECTED, INCOMPLETE, ERROR) cannot be turned off.
 
 Optional: copy a `config\` folder next to the exe to override bundled title-block layouts, the purpose-of-issue whitelist (`suitability.yaml`), title-block client names (`clients.yaml`), and portal document-list column names (`document_lists.yaml`). If that folder is missing, the exe uses the files baked into it.
 
@@ -81,6 +93,9 @@ python tbcheck.py --no-pause
 # Auto-rename to doc-ref_title_revision from the title block
 python tbcheck_rename.py --no-pause
 
+# Skip portal revision (and any other checks) for a custom run
+python tbcheck_custom.py --disable portal-revision --no-pause
+
 # Or use the CLI
 drawing-qa check path/to/drawings --output reports/titleblock-qa.xlsx
 drawing-qa inspect path/to/drawing.pdf --debug-dir debug
@@ -108,7 +123,7 @@ Revision pattern and field count are set in [`src/drawing_qa/default_config/sett
 
 ## Title-block layouts
 
-Default layouts live in [`src/drawing_qa/default_config/title_blocks/`](src/drawing_qa/default_config/title_blocks/). That folder includes the current MBS right-hand block (`mbs_right`), the older MBS classic block (`mbs_classic`, headings not selectable so values are page clips), and the portrait MBS bottom block (`mbs_bottom`, Status / Number / Amendments). Purpose-of-issue checking uses [`src/drawing_qa/default_config/suitability.yaml`](src/drawing_qa/default_config/suitability.yaml). Add a `projects:` list keyed by the ISO project code (first filename field, e.g. `R456` Trillium, `R459` Oval C+D, `J106309` Barking Riverside). Projects with no list use `suggested:` (Oval C+D) as the whitelist. P vs C pairing (`PURPOSE_MISMATCH`) is the `purpose:` block in that same file. A revision-history description is only compared with the current purpose when that row matches the whitelist; other history text is treated as a note. To customize a deployed copy, put YAML files in `config\title_blocks\` next to the exe and include `config\settings.yaml` plus `config\suitability.yaml`.
+Default layouts live in [`src/drawing_qa/default_config/title_blocks/`](src/drawing_qa/default_config/title_blocks/). That folder includes the current MBS right-hand block (`mbs_right`), the same grid on portrait sheets (`mbs_right_portrait`), the older MBS classic block (`mbs_classic`, headings not selectable so values are page clips), and the portrait MBS bottom block (`mbs_bottom`, Status / Number / Amendments). Purpose-of-issue checking uses [`src/drawing_qa/default_config/suitability.yaml`](src/drawing_qa/default_config/suitability.yaml). Add a `projects:` list keyed by the ISO project code (first filename field, e.g. `R456` Trillium, `R459` Oval C+D, `J106309` Barking Riverside). Projects with no list use `suggested:` (Oval C+D) as the whitelist. P vs C pairing (`PURPOSE_MISMATCH`) is the `purpose:` block in that same file. A revision-history description is only compared with the current purpose when that row matches the whitelist; other history text is treated as a note. To customize a deployed copy, put YAML files in `config\title_blocks\` next to the exe and include `config\settings.yaml` plus `config\suitability.yaml`.
 
 Typical workflow for a new style:
 
@@ -166,4 +181,4 @@ pip install -e ".[build]"
 python scripts/build_exe.py
 ```
 
-On Linux that produces `dist/TBCheck` and `dist/TBCheckRename` (not Windows `.exe` files). Build the Windows exes with `build_exe.bat` on Windows.
+On Linux that produces `dist/TBCheck`, `dist/TBCheckRename`, and `dist/TBCheckCustom` (not Windows `.exe` files). Build the Windows exes with `build_exe.bat` on Windows.

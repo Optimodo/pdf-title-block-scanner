@@ -7,6 +7,7 @@ from drawing_qa.client import (
     client_is_allowed,
     client_whitelist_note,
 )
+from drawing_qa.checks import CheckOptions
 from drawing_qa.config_loader import ClientCheckConfig, SpellCheckConfig, SuitabilityCheckConfig
 from drawing_qa.models import (
     CheckStatus,
@@ -267,9 +268,11 @@ def compare_document(
     *,
     allowed_suitability: list[str] | None = None,
     accept_code_only: bool = True,
+    check_options: CheckOptions | None = None,
 ) -> tuple[list[FieldComparison], list[FieldComparison], CheckStatus, list[str]]:
     comparisons: list[FieldComparison] = []
     notes: list[str] = []
+    options = check_options or CheckOptions()
 
     def add(name: str, fn_val: str | None, tb_val: str | None, kind: str) -> None:
         if kind == "title":
@@ -315,14 +318,15 @@ def compare_document(
                     incomplete = True
                     notes.append(f"{field_name}: {item.detail}")
             elif item.matched is False:
-                mismatch = True
-                required_fail = True
-                notes.append(
-                    f"{field_name.replace('_', ' ')} mismatch: "
-                    f"filename {item.filename_value!r} != title block {item.titleblock_value!r}"
-                )
+                if options.allows("mismatch"):
+                    mismatch = True
+                    required_fail = True
+                    notes.append(
+                        f"{field_name.replace('_', ' ')} mismatch: "
+                        f"filename {item.filename_value!r} != title block {item.titleblock_value!r}"
+                    )
         elif rule in {"if_both_present", "optional"}:
-            if item.matched is False:
+            if item.matched is False and options.allows("mismatch"):
                 mismatch = True
                 notes.append(
                     f"{field_name.replace('_', ' ')} mismatch: "
@@ -334,11 +338,14 @@ def compare_document(
         allowed_suitability=allowed_suitability,
         accept_code_only=accept_code_only,
     )
-    notes.extend(history_notes)
+    if options.allows("history"):
+        notes.extend(history_notes)
+    else:
+        history_mismatch = False
 
     if _layout_undetected(titleblock):
         return comparisons, history_comps, CheckStatus.UNDETECTED, titleblock.notes
-    if not filename.parse_ok:
+    if not filename.parse_ok and options.allows("filename-parse"):
         return (
             comparisons,
             history_comps,
@@ -360,6 +367,7 @@ def build_result(
     spell_check_config: SpellCheckConfig | None = None,
     suitability_check_config: SuitabilityCheckConfig | None = None,
     client_check_config: ClientCheckConfig | None = None,
+    check_options: CheckOptions | None = None,
 ) -> DocumentResult:
     allowed: list[str] = []
     accept_code_only = True
@@ -381,12 +389,14 @@ def build_result(
             )
         result.designer_purpose_values = list(allowed)
 
+    options = check_options or CheckOptions()
     comparisons, history_comps, status, notes = compare_document(
         result.filename,
         result.titleblock,
         rules,
         allowed_suitability=allowed or None,
         accept_code_only=accept_code_only,
+        check_options=options,
     )
     result.comparisons = comparisons
     result.history_comparisons = history_comps
@@ -399,7 +409,12 @@ def build_result(
         record_issue(result, status)
 
     # Run spell checking if enabled
-    if spell_check_config and spell_check_config.enabled and spell_check_config.check_title:
+    if (
+        options.allows("spelling")
+        and spell_check_config
+        and spell_check_config.enabled
+        and spell_check_config.check_title
+    ):
         title_to_check = result.titleblock.title
         if title_to_check:
             with timing_span("spellcheck"):
@@ -419,7 +434,8 @@ def build_result(
                     record_issue(result, CheckStatus.SPELLING_ERROR)
 
     if (
-        suitability_check_config
+        options.allows("suitability")
+        and suitability_check_config
         and suitability_check_config.enabled
         and result.titleblock.suitability
         and result.allowed_suitability
@@ -440,7 +456,7 @@ def build_result(
         purpose_enabled = suitability_check_config.purpose_enabled
         purpose_review = suitability_check_config.purpose_review
         purpose_construction = suitability_check_config.purpose_construction
-    if purpose_enabled:
+    if purpose_enabled and options.allows("purpose"):
         purpose_note = revision_purpose_mismatch_note(
             result.titleblock.revision,
             result.titleblock.suitability,
@@ -452,7 +468,8 @@ def build_result(
             record_issue(result, CheckStatus.PURPOSE_MISMATCH)
 
     if (
-        client_check_config
+        options.allows("client")
+        and client_check_config
         and client_check_config.enabled
         and CheckStatus.UNDETECTED not in result.issues
         and result.status != CheckStatus.UNDETECTED

@@ -1,0 +1,58 @@
+# MBS right-hand title block on portrait sheets. Same NUMBER / TITLE /
+# SUITABILITY grid as mbs_right, but the stamp sits further left than on
+# landscape plots, so mbs_right's 0.78 crop misses Number and Suitability.
+id: mbs_right_portrait
+name: MBS right-hand title block (portrait)
+orientation: portrait
+min_score: 0.75
+region:
+  left: 0.72
+  top: 0.62
+  right: 1.0
+  bottom: 1.0
+history:
+  expand_left: 0.0
+  expand_top: 0.0
+  min_rows: 2
+anchors:
+  - NUMBER
+  - TITLE
+  - REVISION
+  - SUITABILITY
+  - AMENDMENTS
+  - PROJECT
+  - CLIENT
+  - DESCRIPTION
+  - BY
+  - DESIGNED BY
+  - DRAWN BY
+  - CHECKED BY
+  - SCALES
+  - PROJECT NO
+  - PROJECT NUMBER
+required_anchor_groups:
+  - [NUMBER]
+  - [REVISION, REV]
+  - [SUITABILITY]
+  - [TITLE]
+fields:
+  document_reference:
+    labels: [NUMBER, DRAWING NO, DRAWING NUMBER, DOCUMENT NUMBER]
+    direction: below
+    pattern: "[A-Z0-9]+(?:-[A-Z0-9]+){5}-[0-9]+(?:-[0-9]+)?(?:\\s*[.][0-9]+)?"
+  title:
+    labels: [TITLE, DRAWING TITLE]
+    direction: below
+  revision:
+    labels: [REVISION, REV]
+    direction: auto
+    pattern: "(?:[PC]\\d{2}|[A-Z]\\d?)"
+  suitability:
+    labels: [SUITABILITY, STATUS, PURPOSE OF ISSUE]
+    direction: auto
+  date:
+    labels: [DATE, ISSUE DATE]
+    direction: auto
+  client:
+    labels: [CLIENT, CLIENT NAME]
+    direction: auto

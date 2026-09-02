@@ -105,6 +105,8 @@ def unpaired_dwgs(results: list[DocumentResult], dwg_files: list[Path]) -> list[
 def check_dwg_pairing(
     results: list[DocumentResult],
     folder: Path,
+    *,
+    flag_issues: bool = True,
 ) -> list[DocumentResult]:
     """Update results with paired_dwg / dwg_mismatch / dwg_issue and notes."""
     dwg_files = find_dwg_files(folder)
@@ -126,7 +128,8 @@ def check_dwg_pairing(
                     f"vs DWG '{dwg_ref}' (.1 vs -1)"
                 )
                 result.notes.append(note)
-                record_issue(result, CheckStatus.DWG_ISSUE)
+                if flag_issues:
+                    record_issue(result, CheckStatus.DWG_ISSUE)
             elif issue == NAME_DIFFERS:
                 result.notes.append(
                     f"DWG paired by document reference: PDF '{result.path.name}' "
@@ -135,5 +138,6 @@ def check_dwg_pairing(
         else:
             result.dwg_issue = MISSING
             result.notes.append("No matching DWG in this folder")
-            record_issue(result, CheckStatus.DWG_ISSUE)
+            if flag_issues:
+                record_issue(result, CheckStatus.DWG_ISSUE)
     return results

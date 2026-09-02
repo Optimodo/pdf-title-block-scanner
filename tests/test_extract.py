@@ -180,3 +180,28 @@ def test_title_ignores_drawing_notes_left_of_title_heading():
     assert "2-04" not in found[0]
     assert "700" not in found[0]
     assert "1130" not in found[0]
+
+
+def test_title_below_includes_glyphs_overlapping_heading():
+    """A0 kitchen plots: first title line overlaps the Title heading box."""
+    words = [
+        Word(x0=2074.9, y0=1204.3, x1=2089.8, y1=1212.3, text="Title"),
+        Word(x0=2090.8, y0=1209.4, x1=2110.8, y1=1237.2, text="B4"),
+        Word(x0=2115.4, y0=1209.4, x1=2120.8, y1=1237.2, text="-"),
+        Word(x0=2125.4, y0=1209.4, x1=2180.1, y1=1237.2, text="Kitchen"),
+        Word(x0=2184.6, y0=1209.4, x1=2251.1, y1=1237.2, text="Electrical"),
+        Word(x0=2255.7, y0=1209.4, x1=2335.0, y1=1237.2, text="Setting-out"),
+        Word(x0=2143.2, y0=1232.4, x1=2192.4, y1=1260.2, text="Layout"),
+        Word(x0=2197.0, y0=1232.4, x1=2202.4, y1=1260.2, text="-"),
+        Word(x0=2207.0, y0=1232.4, x1=2282.6, y1=1260.2, text="Apartment"),
+        Word(x0=2169.7, y0=1255.4, x1=2206.1, y1=1283.2, text="Type"),
+        Word(x0=2210.7, y0=1255.4, x1=2256.2, y1=1283.2, text="B4-1A"),
+        Word(x0=2074.9, y0=1310.0, x1=2105.0, y1=1320.0, text="Client"),
+        Word(x0=2110.0, y0=1310.0, x1=2200.0, y1=1320.0, text="Seven"),
+    ]
+    found = extract_near_label_words(
+        words, ["TITLE"], "below", stop_labels=["CLIENT"]
+    )
+    assert found is not None
+    assert found[0] == "B4 - Kitchen Electrical Setting-out Layout - Apartment Type B4-1A"
+

@@ -102,7 +102,11 @@ def test_successor_revision_rules():
     assert not is_successor_revision("P01", "P03")
     assert not is_successor_revision("P01", "C02")
     assert not is_successor_revision("C01", "P02")
+    assert is_successor_revision(".C04", "C05")
+    assert is_successor_revision("C01.", "C02")
     assert next_revision("P01") == "P02"
+    assert next_revision(".C04") == "C05"
+    assert next_revision("C01.") == "C02"
     assert is_allowed_first_revision("C01", ["P01", "C01"])
     assert not is_allowed_first_revision("P02", ["P01", "C01"])
 
@@ -117,6 +121,27 @@ def test_load_4projects_headers(tmp_path: Path):
     assert row is not None
     assert row.revision == "P01"
     assert row.title == "Plant"
+
+
+def test_strips_leading_and_trailing_dots_from_portal_revision(tmp_path: Path):
+    path = _write_excel(
+        tmp_path / "WCR Listing.xlsx",
+        [("WCR-MBS-B7-ZZ-DR-E-6105", "Apartment Type B7-2C DUP", ".C04")],
+    )
+    index = load_document_list(path, _layout())
+    row = index.get("WCR-MBS-B7-ZZ-DR-E-6105")
+    assert row is not None
+    assert row.revision == "C04"
+
+    layout = _layout()
+    result = check_document_list(
+        [_drawing(project="WCR", number="6105", revision="C05", doc_ref="WCR-MBS-B7-ZZ-DR-E-6105")],
+        index,
+        layout,
+    )[0]
+    finalize_status(result)
+    assert result.portal_revision == "C04"
+    assert CheckStatus.PORTAL_REVISION not in result.issues
 
 
 def test_load_asite_headers_on_row_six(tmp_path: Path):

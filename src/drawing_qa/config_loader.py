@@ -6,6 +6,7 @@ from pathlib import Path
 
 import yaml
 
+from drawing_qa.checks import CheckOptions
 from drawing_qa.document_list import DocumentListLayout, load_document_list_layout
 from drawing_qa.models import FieldSpec, HistorySpec, RectFrac, TitleBlockLayout
 from drawing_qa.paths import bundled_config_dir, resolve_config_dir
@@ -69,6 +70,7 @@ class AppConfig:
     client_check: ClientCheckConfig | None = None
     preview: PreviewConfig | None = None
     document_list: DocumentListConfig | None = None
+    check_options: CheckOptions = field(default_factory=CheckOptions)
 
 
 def _rect(data: dict) -> RectFrac:
@@ -125,6 +127,7 @@ def load_layout(path: Path) -> TitleBlockLayout:
         fields=fields,
         min_score=float(data.get("min_score", 0.7)),
         history=_history_spec(data.get("history")),
+        orientation=str(data.get("orientation") or "").strip().lower(),
     )
 
 

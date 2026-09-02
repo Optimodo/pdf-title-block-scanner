@@ -5,6 +5,14 @@ import sys
 from pathlib import Path
 
 from drawing_qa.checker import check_paths, iter_pdfs
+from drawing_qa.checks import (
+    CheckOptions,
+    UnknownCheckError,
+    format_check_list,
+    format_check_menu,
+    parse_check_choice,
+    resolve_check_options,
+)
 from drawing_qa.config_loader import load_config
 from drawing_qa.detect import crop_region_pixmap, region_debug_text
 from drawing_qa.document_list import is_spreadsheet
@@ -21,13 +29,65 @@ from drawing_qa.report import default_report_path, write_report
 from drawing_qa.timing import format_report as format_timing_report, is_enabled as timing_enabled
 
 
-def build_parser() -> argparse.ArgumentParser:
+_TOGGLE_VALUE_FLAGS = {
+    "--document-list",
+    "--disable",
+    "--enable",
+    "--checks",
+    "--config-dir",
+    "--output",
+    "--debug-dir",
+}
+
+
+def _add_check_toggle_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--disable",
+        action="append",
+        default=[],
+        metavar="CHECKS",
+        help="Turn off QA checks (comma-separated ids, or all / portal). Repeatable.",
+    )
+    parser.add_argument(
+        "--enable",
+        action="append",
+        default=[],
+        metavar="CHECKS",
+        help="Turn on QA checks after --disable or --checks. Repeatable.",
+    )
+    parser.add_argument(
+        "--checks",
+        default=None,
+        metavar="CHECKS",
+        help="Run only these QA checks (comma-separated). All others stay off.",
+    )
+    parser.add_argument(
+        "--list-checks",
+        action="store_true",
+        help="Print QA check ids that can be toggled, then exit.",
+    )
+    parser.add_argument(
+        "--prompt-checks",
+        action="store_true",
+        help="Ask which QA checks to run before scanning (TBCheckCustom).",
+    )
+    parser.add_argument(
+        "--custom-checks",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+
+
+def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
+    toggles = argparse.ArgumentParser(add_help=False)
+    _add_check_toggle_args(toggles)
     parser = argparse.ArgumentParser(
-        prog="TBCheck",
+        prog=prog or "TBCheck",
         description=(
             "Compare ISO 19650 drawing filenames with title-block contents. "
             "With no arguments, checks every PDF in the folder that contains this program."
         ),
+        parents=[toggles],
     )
     parser.add_argument(
         "--no-pause",
@@ -55,7 +115,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="command")
 
-    check = sub.add_parser("check", help="Scan PDFs and write an Excel QA report")
+    check = sub.add_parser(
+        "check",
+        help="Scan PDFs and write an Excel QA report",
+        parents=[toggles],
+    )
     check.add_argument(
         "input",
         nargs="?",
@@ -228,7 +292,8 @@ def _take_dropped_document_list(argv: list[str]) -> tuple[list[str], Path | None
             remaining.append(item)
             skip_next = False
             continue
-        if item == "--document-list":
+        flag = item.split("=", 1)[0]
+        if flag in _TOGGLE_VALUE_FLAGS and "=" not in item:
             remaining.append(item)
             skip_next = True
             continue
@@ -250,6 +315,84 @@ def _print_report_paths(saved: Path) -> None:
         print(f"Document control: {control}")
 
 
+def _cli_check_flags_used(args: argparse.Namespace) -> bool:
+    return bool(
+        getattr(args, "checks", None)
+        or getattr(args, "disable", None)
+        or getattr(args, "enable", None)
+    )
+
+
+def _should_prompt_checks(args: argparse.Namespace) -> bool:
+    if getattr(args, "list_checks", False):
+        return False
+    if getattr(args, "prompt_checks", False):
+        return True
+    if not getattr(args, "custom_checks", False):
+        return False
+    if getattr(args, "no_pause", False):
+        return False
+    if _cli_check_flags_used(args):
+        return False
+    return True
+
+
+def _prompt_check_toggles(initial: CheckOptions | None = None) -> CheckOptions:
+    enabled = set((initial or CheckOptions()).enabled)
+    current = CheckOptions(frozenset(enabled))
+    print()
+    print(format_check_menu(current))
+    print()
+    while True:
+        try:
+            raw = input("Toggle (Enter to run): ").strip()
+        except EOFError:
+            raw = ""
+        if not raw:
+            return CheckOptions(frozenset(enabled))
+        try:
+            names = parse_check_choice(raw)
+        except UnknownCheckError as exc:
+            print(f"  {exc}")
+            continue
+        for name in names:
+            if name in enabled:
+                enabled.discard(name)
+            else:
+                enabled.add(name)
+        current = CheckOptions(frozenset(enabled))
+        disabled = current.disabled_ids()
+        print("  Off: " + (", ".join(disabled) if disabled else "(none)"))
+
+
+def _check_options_from_args(args: argparse.Namespace) -> CheckOptions:
+    return resolve_check_options(
+        only=getattr(args, "checks", None),
+        disable=getattr(args, "disable", None),
+        enable=getattr(args, "enable", None),
+    )
+
+
+def _print_tool_banner(
+    *,
+    standardize_names: bool,
+    custom_mode: bool,
+    check_options,
+) -> None:
+    if standardize_names:
+        print("TBCheckRename - Title-block QA + standardize filenames")
+    elif custom_mode:
+        print("TBCheckCustom - Title-block QA (menu, or --disable / --checks)")
+    else:
+        print("TBCheck - Title-block QA")
+    if custom_mode or (check_options and check_options.disabled_ids()):
+        disabled = check_options.disabled_ids() if check_options else []
+        if disabled:
+            print("Disabled checks: " + ", ".join(disabled))
+        elif custom_mode:
+            print("Checks: all on.  --disable portal-revision   --list-checks")
+
+
 def run_folder_check(
     folder: Path,
     *,
@@ -259,14 +402,18 @@ def run_folder_check(
     progress: bool = True,
     standardize_names: bool = False,
     document_list: Path | None = None,
+    check_options=None,
+    custom_mode: bool = False,
+    prompt_checks: bool = False,
 ) -> int:
     folder = folder.resolve()
     config_path = resolve_config_dir(folder, config_dir)
     print("=" * 60)
-    if standardize_names:
-        print("TBCheckRename - Title-block QA + standardize filenames")
-    else:
-        print("TBCheck - Title-block QA")
+    _print_tool_banner(
+        standardize_names=standardize_names,
+        custom_mode=custom_mode,
+        check_options=check_options,
+    )
     print("=" * 60)
     print(f"Folder: {folder}")
     print(f"Config: {config_path}")
@@ -279,6 +426,14 @@ def run_folder_check(
     except Exception as exc:  # noqa: BLE001
         print(f"ERROR: could not load config: {exc}", file=sys.stderr)
         return 2
+    if check_options is not None:
+        config.check_options = check_options
+    if prompt_checks:
+        check_options = _prompt_check_toggles(check_options)
+        config.check_options = check_options
+        disabled = check_options.disabled_ids()
+        print("Disabled checks: " + (", ".join(disabled) if disabled else "none"))
+        print()
 
     pdfs = iter_pdfs(folder, recursive=recursive)
     if not pdfs:
@@ -339,6 +494,9 @@ def run_folder_check(
 def cmd_check(args: argparse.Namespace) -> int:
     standardize_names = getattr(args, "standardize_names", False)
     document_list = getattr(args, "document_list", None)
+    check_options = _check_options_from_args(args)
+    custom_mode = bool(getattr(args, "custom_checks", False))
+    prompt_checks = _should_prompt_checks(args)
     target = args.input.resolve() if args.input is not None else app_dir()
     if target.is_file() and is_spreadsheet(target):
         return run_folder_check(
@@ -349,9 +507,15 @@ def cmd_check(args: argparse.Namespace) -> int:
             progress=True,
             standardize_names=standardize_names,
             document_list=target,
+            check_options=check_options,
+            custom_mode=custom_mode,
+            prompt_checks=prompt_checks,
         )
     if target.is_file():
+        if prompt_checks:
+            check_options = _prompt_check_toggles(check_options)
         config = load_config(resolve_config_dir(target.parent, args.config_dir))
+        config.check_options = check_options
         pdfs = iter_pdfs(target)
         results = check_paths(
             pdfs, config, standardize=standardize_names, document_list=document_list
@@ -377,6 +541,9 @@ def cmd_check(args: argparse.Namespace) -> int:
         progress=True,
         standardize_names=standardize_names,
         document_list=document_list,
+        check_options=check_options,
+        custom_mode=custom_mode,
+        prompt_checks=prompt_checks,
     )
 
 
@@ -438,7 +605,8 @@ def main(argv: list[str] | None = None) -> int:
         else:
             cleaned.append(item)
 
-    parser = build_parser()
+    custom = "--custom-checks" in cleaned
+    parser = build_parser(prog="TBCheckCustom" if custom else "TBCheck")
     cleaned, dropped_list = _take_dropped_document_list(cleaned)
     args = parser.parse_args(cleaned)
     if dropped_list is not None and getattr(args, "document_list", None) is None:
@@ -452,11 +620,17 @@ def main(argv: list[str] | None = None) -> int:
     
     code = 0
     try:
-        if args.command is None:
+        if getattr(args, "list_checks", False):
+            print(format_check_list())
+            code = 0
+        elif args.command is None:
             code = run_folder_check(
                 app_dir(),
                 standardize_names=getattr(args, "standardize_names", False),
                 document_list=getattr(args, "document_list", None),
+                check_options=_check_options_from_args(args),
+                custom_mode=bool(getattr(args, "custom_checks", False)),
+                prompt_checks=_should_prompt_checks(args),
             )
         elif args.command == "check":
             code = cmd_check(args)
@@ -465,6 +639,9 @@ def main(argv: list[str] | None = None) -> int:
         else:
             parser.error(f"Unknown command {args.command}")
             code = 2
+    except UnknownCheckError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        code = 2
     except Exception as exc:  # noqa: BLE001 - keep the console open on unexpected errors
         print(f"ERROR: {exc}", file=sys.stderr)
         code = 2

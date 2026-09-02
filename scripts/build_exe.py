@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "src" / "drawing_qa" / "default_config"
 ENTRY = ROOT / "tbcheck.py"
 ENTRY_RENAME = ROOT / "tbcheck_rename.py"
+ENTRY_CUSTOM = ROOT / "tbcheck_custom.py"
 
 
 def build_executable(entry_script: Path, exe_name: str) -> int:
@@ -58,7 +59,7 @@ def build_executable(entry_script: Path, exe_name: str) -> int:
 
 
 def main() -> int:
-    """Build TBCheck.exe and TBCheckRename.exe."""
+    """Build TBCheck.exe, TBCheckRename.exe, and TBCheckCustom.exe."""
     code = build_executable(ENTRY, "TBCheck")
     if code != 0:
         print(f"\nERROR: Failed to build TBCheck (exit code {code})")
@@ -69,10 +70,15 @@ def main() -> int:
         print(f"\nERROR: Failed to build TBCheckRename (exit code {code})")
         return code
 
+    code = build_executable(ENTRY_CUSTOM, "TBCheckCustom")
+    if code != 0:
+        print(f"\nERROR: Failed to build TBCheckCustom (exit code {code})")
+        return code
+
     try:
-        print("\n✓ Both executables built successfully")
+        print("\n✓ All three executables built successfully")
     except UnicodeEncodeError:
-        print("\nOK: Both executables built successfully")
+        print("\nOK: All three executables built successfully")
     return 0
 
 

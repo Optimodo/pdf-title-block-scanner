@@ -4,9 +4,9 @@ cd /d "%~dp0"
 chcp 65001 >nul
 set PYTHONUTF8=1
 set PYTHONIOENCODING=utf-8
-REM Build TBCheck.exe and TBCheckRename.exe with the project venv.
+REM Build TBCheck.exe, TBCheckRename.exe, and TBCheckCustom.exe with the project venv.
 echo ============================================
-echo Building TBCheck.exe and TBCheckRename.exe
+echo Building TBCheck.exe, TBCheckRename.exe, and TBCheckCustom.exe
 echo ============================================
 echo.
 
@@ -35,6 +35,7 @@ if exist "build" (
 )
 if exist "TBCheck.spec" del TBCheck.spec
 if exist "TBCheckRename.spec" del TBCheckRename.spec
+if exist "TBCheckCustom.spec" del TBCheckCustom.spec
 
 "%PY%" scripts\build_exe.py
 if errorlevel 1 (
@@ -46,6 +47,7 @@ if errorlevel 1 (
 
 if exist "TBCheck.spec" del TBCheck.spec
 if exist "TBCheckRename.spec" del TBCheckRename.spec
+if exist "TBCheckCustom.spec" del TBCheckCustom.spec
 
 echo.
 echo ============================================
@@ -55,6 +57,7 @@ echo.
 echo Executables:
 echo   dist\TBCheck.exe        QA report + optional mismatch filename fix
 echo   dist\TBCheckRename.exe  QA report + auto-rename to doc-ref_title_revision
+echo   dist\TBCheckCustom.exe  QA report with --disable / --checks to toggle QA rules
 echo.
 echo Copy an exe into a folder of drawing PDFs and double-click.
 echo Optional: copy a config\ folder next to the exe to override layouts.

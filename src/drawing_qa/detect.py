@@ -131,13 +131,22 @@ def extract_field(
     return ExtractedField(name=name)
 
 
+def _layout_fits_page(page, layout: TitleBlockLayout) -> bool:
+    wanted = (layout.orientation or "").strip().lower()
+    if wanted not in {"portrait", "landscape"}:
+        return True
+    portrait = float(page.rect.height) > float(page.rect.width)
+    return wanted == "portrait" if portrait else wanted == "landscape"
+
+
 def extract_titleblock(
     page,
     layouts: list[TitleBlockLayout],
     min_score: float,
 ) -> TitleBlockFields:
+    usable = [layout for layout in layouts if _layout_fits_page(page, layout)]
     candidates: list[tuple[float, TitleBlockLayout]] = []
-    for layout in layouts:
+    for layout in usable:
         words = extract_words(page, layout.region)
         score = score_layout(words, layout)
         threshold = max(min_score, layout.min_score)
@@ -147,7 +156,7 @@ def extract_titleblock(
 
     if not candidates:
         best: tuple[float, TitleBlockLayout] | None = None
-        for layout in layouts:
+        for layout in usable:
             words = extract_words(page, layout.region)
             score = score_layout(words, layout)
             if best is None or score > best[0]:

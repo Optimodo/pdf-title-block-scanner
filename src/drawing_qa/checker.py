@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from drawing_qa.checks import CheckOptions
 from drawing_qa.compare import build_result
 from drawing_qa.config_loader import AppConfig
 from drawing_qa.detect import extract_titleblock
@@ -79,6 +80,7 @@ def check_pdf(path: Path, config: AppConfig) -> DocumentResult:
                     config.spell_check,
                     config.suitability_check,
                     config.client_check,
+                    check_options=config.check_options,
                 )
             if (config.preview and config.preview.all_files) or result.status != CheckStatus.MATCH:
                 with timing_span("preview"):
@@ -144,11 +146,19 @@ def check_paths(
     if results:
         folder = results[0].path.parent
         with timing_span("validations"):
-            results = check_duplicates(results)
-            results = check_date_regression(results)
-            results = check_dwg_pairing(results, folder)
+            options = config.check_options or CheckOptions()
+            if options.allows("duplicates"):
+                results = check_duplicates(results)
+            if options.allows("date-regression"):
+                results = check_date_regression(results)
+            results = check_dwg_pairing(
+                results, folder, flag_issues=options.allows("dwg")
+            )
             list_cfg = config.document_list
-            if list_cfg and list_cfg.enabled and list_cfg.layout:
+            want_portal = options.allows("portal-revision") or options.allows(
+                "portal-title"
+            )
+            if list_cfg and list_cfg.enabled and list_cfg.layout and want_portal:
                 project_codes = sorted(
                     {
                         (item.filename.parts.get("project") or "").strip().upper()
@@ -168,7 +178,9 @@ def check_paths(
                     except Exception:  # noqa: BLE001 - optional check must not abort QA
                         index = None
                     if index is not None and index.by_ref:
-                        results = check_document_list(results, index, list_cfg.layout)
+                        results = check_document_list(
+                            results, index, list_cfg.layout, check_options=options
+                        )
 
             for result in results:
                 finalize_status(result)

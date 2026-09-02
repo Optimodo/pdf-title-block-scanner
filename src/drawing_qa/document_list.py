@@ -9,6 +9,7 @@ from pathlib import Path
 
 from openpyxl import load_workbook
 
+from drawing_qa.checks import CheckOptions
 from drawing_qa.docref import canonical_doc_ref
 from drawing_qa.filename import parse_filename
 from drawing_qa.models import CheckStatus, DocumentResult, record_issue
@@ -16,6 +17,7 @@ from drawing_qa.tokens import (
     is_allowed_first_revision,
     is_successor_revision,
     next_revision,
+    normalize_revision_token,
     parse_pc_revision,
     revision_rank,
 )
@@ -316,6 +318,7 @@ def load_document_list(path: Path, layout: DocumentListLayout) -> DocumentListIn
             continue
         raw_ref = _cell_text(row[mapping["doc_ref"]] if mapping["doc_ref"] < len(row) else "")
         revision = _cell_text(row[mapping["revision"]] if mapping["revision"] < len(row) else "")
+        revision = normalize_revision_token(revision) if revision else ""
         title = ""
         if "title" in mapping and mapping["title"] < len(row):
             title = _cell_text(row[mapping["title"]])
@@ -470,8 +473,10 @@ def check_document_list(
     results: list[DocumentResult],
     index: DocumentListIndex,
     layout: DocumentListLayout,
+    check_options: CheckOptions | None = None,
 ) -> list[DocumentResult]:
     """Flag PDFs whose revision is not the next portal issue, or whose title disagrees."""
+    options = check_options or CheckOptions()
     source = index.path.name
     for result in results:
         result.portal_list_name = source
@@ -486,6 +491,8 @@ def check_document_list(
             if not local_rev:
                 continue
             if is_allowed_first_revision(local_rev, allowed_first):
+                continue
+            if not options.allows("portal-revision"):
                 continue
             expected = _expected_first_note(allowed_first)
             result.notes.append(
@@ -513,14 +520,20 @@ def check_document_list(
         if index.has_status and not status_allows_upload(portal.status, layout, project):
             result.portal_blocks_upload = True
         if upgrade is not None:
-            if not _revision_matches(local_rev, upgrade.revision):
+            if options.allows("portal-revision") and not _revision_matches(
+                local_rev, upgrade.revision
+            ):
                 result.notes.append(
                     f"Portal list {source} has {doc_ref} at {portal.revision} "
                     f"({portal.status or 'no status'}); this project is issuing construction, "
                     f"so this file should be {upgrade.revision}, not {local_rev}"
                 )
                 record_issue(result, CheckStatus.PORTAL_REVISION)
-        elif local_rev and not is_successor_revision(portal.revision, local_rev):
+        elif (
+            options.allows("portal-revision")
+            and local_rev
+            and not is_successor_revision(portal.revision, local_rev)
+        ):
             nxt = next_revision(portal.revision)
             extra = ""
             if parse_pc_revision(portal.revision) and parse_pc_revision(portal.revision)[0] == "P":
@@ -538,9 +551,10 @@ def check_document_list(
             portal_norm = normalize_title(portal.title)
             local_norm = normalize_title(local_title)
             if portal_norm and local_norm and portal_norm != local_norm:
-                result.notes.append(
-                    f"Portal list title {portal.title!r} does not match title-block "
-                    f"title {local_title!r}"
-                )
-                record_issue(result, CheckStatus.PORTAL_TITLE)
+                if options.allows("portal-title"):
+                    result.notes.append(
+                        f"Portal list title {portal.title!r} does not match title-block "
+                        f"title {local_title!r}"
+                    )
+                    record_issue(result, CheckStatus.PORTAL_TITLE)
     return results

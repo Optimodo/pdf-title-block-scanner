@@ -30,6 +30,7 @@ build = [
 drawing-qa = "drawing_qa.cli:main"
 tbcheck = "drawing_qa.cli:main"
 tbcheck-rename = "drawing_qa.cli_rename:main"
+tbcheck-custom = "drawing_qa.cli_custom:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
