@@ -152,7 +152,7 @@ def clean_filename_part(text: str) -> str:
 def standardize_filename(result: DocumentResult) -> str | None:
     """Build {doc-ref}_{title}_{revision} from the title block.
 
-    Used by TBCheckRename to bulk-rename every PDF that has a readable
+    Used by QA-TB-File-Renamer to bulk-rename every PDF that has a readable
     document reference. Missing title or revision is omitted rather than
     blocking the rename. Returns the canonical name even when it already
     matches the current file (so the report can mark it Unchanged).

@@ -3,6 +3,7 @@ from pathlib import Path
 from drawing_qa.paths import (
     REPORT_NAME,
     designer_report_path,
+    designer_text_report_path,
     document_control_report_path,
     is_versioned_report_name,
     next_available_paired_report_path,
@@ -42,6 +43,12 @@ def test_paired_report_skips_existing_designer_sidecar(tmp_path: Path):
     designer_report_path(tmp_path / "Free_260826.xlsx").write_bytes(b"side")
     second = next_available_paired_report_path(tmp_path, "Free_260826")
     assert second.name == "Free_260826-1.xlsx"
+
+
+def test_paired_report_skips_existing_designer_text_sidecar(tmp_path: Path):
+    designer_text_report_path(tmp_path / "Free_260826.xlsx").write_text("old", encoding="utf-8")
+    first = next_available_paired_report_path(tmp_path, "Free_260826")
+    assert first.name == "Free_260826-1.xlsx"
 
 
 def test_paired_report_skips_existing_document_control_sidecar(tmp_path: Path):

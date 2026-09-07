@@ -1,4 +1,4 @@
-"""Build the standalone TBCheck executables with PyInstaller."""
+"""Build the standalone QA-TB executables with PyInstaller."""
 
 from __future__ import annotations
 
@@ -12,17 +12,17 @@ ENTRY = ROOT / "tbcheck.py"
 ENTRY_RENAME = ROOT / "tbcheck_rename.py"
 ENTRY_CUSTOM = ROOT / "tbcheck_custom.py"
 
+sys.path.insert(0, str(ROOT / "src"))
+from drawing_qa.version import (  # noqa: E402
+    TOOL_CHECKER,
+    TOOL_CUSTOM,
+    TOOL_RENAMER,
+    versioned_exe_name,
+)
+
 
 def build_executable(entry_script: Path, exe_name: str) -> int:
-    """Build a single executable with PyInstaller.
-
-    Args:
-        entry_script: Path to entry point script
-        exe_name: Name for the output executable
-
-    Returns:
-        Exit code
-    """
+    """Build a single executable with PyInstaller."""
     sep = ";" if sys.platform == "win32" else ":"
     add_data = f"{CONFIG}{sep}drawing_qa/default_config"
     cmd = [
@@ -59,21 +59,17 @@ def build_executable(entry_script: Path, exe_name: str) -> int:
 
 
 def main() -> int:
-    """Build TBCheck.exe, TBCheckRename.exe, and TBCheckCustom.exe."""
-    code = build_executable(ENTRY, "TBCheck")
-    if code != 0:
-        print(f"\nERROR: Failed to build TBCheck (exit code {code})")
-        return code
-
-    code = build_executable(ENTRY_RENAME, "TBCheckRename")
-    if code != 0:
-        print(f"\nERROR: Failed to build TBCheckRename (exit code {code})")
-        return code
-
-    code = build_executable(ENTRY_CUSTOM, "TBCheckCustom")
-    if code != 0:
-        print(f"\nERROR: Failed to build TBCheckCustom (exit code {code})")
-        return code
+    """Build the three versioned QA-TB executables."""
+    targets = (
+        (ENTRY, versioned_exe_name(TOOL_CHECKER)),
+        (ENTRY_RENAME, versioned_exe_name(TOOL_RENAMER)),
+        (ENTRY_CUSTOM, versioned_exe_name(TOOL_CUSTOM)),
+    )
+    for entry, name in targets:
+        code = build_executable(entry, name)
+        if code != 0:
+            print(f"\nERROR: Failed to build {name} (exit code {code})")
+            return code
 
     try:
         print("\n✓ All three executables built successfully")

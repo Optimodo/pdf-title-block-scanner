@@ -1,14 +1,14 @@
 # Drawing title-block QA
 
-Drop **TBCheck.exe**, **TBCheckRename.exe**, or **TBCheckCustom.exe** into a folder of construction drawing PDFs and double-click. Each scan writes an Excel report next to the exe.
+Drop **QA-TB-Checker-v1.0.exe**, **QA-TB-File-Renamer-v1.0.exe**, or **QA-TB-Custom-Checker-v1.0.exe** into a folder of construction drawing PDFs and double-click. Each scan writes an Excel report next to the exe. The `v1.0` in the file name is the program version — a newer copy is `v1.1`, so you can tell it apart from an older one left in a drawings folder.
 
-This follows the same “run where it sits” pattern as [mbs-file-tools](https://github.com/Optimodo/mbs-file-tools). Use that toolkit to strip names down to the document reference only. Use **TBCheckRename** in this project when you want names built from the **title-block** document reference, title, and revision (that needs the PDF scan).
+This follows the same “run where it sits” pattern as [mbs-file-tools](https://github.com/Optimodo/mbs-file-tools). Use that toolkit to strip names down to the document reference only. Use **QA-TB-File-Renamer** in this project when you want names built from the **title-block** document reference, title, and revision (that needs the PDF scan).
 
 | Exe | Report | Rename |
 | --- | --- | --- |
-| **TBCheck.exe** | Yes | Optional. If the filename document reference disagrees with the title block, you are prompted to fix it. The rest of the existing name is kept. |
-| **TBCheckRename.exe** | Yes | Automatic. Every PDF with a readable title-block document reference is renamed to `{doc-ref}_{title}_{revision}.pdf`. No prompt. |
-| **TBCheckCustom.exe** | Yes | Same optional rename prompt as TBCheck. Double-click shows a numbered menu of 12 QA checks to turn off or on, then runs. Flags (`--disable`, `--checks`) skip the menu. |
+| **QA-TB-Checker** | Yes | Optional. If the filename document reference disagrees with the title block, you are prompted to fix it. The rest of the existing name is kept. |
+| **QA-TB-File-Renamer** | Yes | Automatic. Every PDF with a readable title-block document reference is renamed to `{doc-ref}_{title}_{revision}.pdf`. No prompt. |
+| **QA-TB-Custom-Checker** | Yes | Same optional rename prompt as QA-TB-Checker. Double-click shows a numbered menu of QA checks (and a field-preview option) to turn off or on, then runs. Flags (`--disable`, `--checks`, `--previews`) skip the menu. |
 
 The report always keeps **File (as scanned)** as the name at the start of the run. After a rename, **New filename** and **Rename result** show what is on disk (or why a rename was skipped). Notes also record `Renamed from … to …`.
 
@@ -34,21 +34,22 @@ OCR for scanned PDFs is out of scope for this version. Sheets need a selectable 
    python scripts/build_exe.py
    ```
 
-   That produces `dist\TBCheck.exe`, `dist\TBCheckRename.exe`, and `dist\TBCheckCustom.exe`.
+   That produces `dist\QA-TB-Checker-v1.0.exe`, `dist\QA-TB-File-Renamer-v1.0.exe`, and `dist\QA-TB-Custom-Checker-v1.0.exe`.
 
 2. Copy the exe you want into the folder that contains the drawing PDFs.
-3. Double-click. A console window lists each file, then waits for Enter.
-4. **TBCheck:** if a filename document reference does not match the title block, you can preview and apply a fix (paired DWG files are renamed the same way).
-5. **TBCheckRename:** files are renamed automatically to `{doc-ref}_{title}_{revision}` from the title block; the Excel report lists original names, new names, and rename results.
+3. Double-click to check every PDF in that folder, or drag one or more selected files onto the exe (PDFs, DWGs, and/or a portal spreadsheet). Only the dropped PDFs are checked. DWGs are used for pairing. If you do not drop a portal list, QA-TB-Checker still looks for one in the drawings folder.
+4. **QA-TB-Checker:** if a filename document reference does not match the title block, you can preview and apply a fix (paired DWG files are renamed the same way).
+5. **QA-TB-File-Renamer:** files are renamed automatically to `{doc-ref}_{title}_{revision}` from the title block; the Excel report lists original names, new names, and rename results.
 6. Open the `{project}_{ddmmyy}.xlsx` report in the same folder to review results.
 
-**TBCheckCustom** — 12 QA policy checks can be toggled. Double-click the exe for an on-screen menu (type a number or name, Enter to run). Or skip the menu from the command line:
+**QA-TB-Custom-Checker** — 12 QA policy checks can be toggled, plus a report option for field-crop previews on every drawing (item 13 / `previews`, off by default). Double-click the exe for an on-screen menu (type a number or name, Enter to run). Or skip the menu from the command line:
 
 ```bat
-TBCheckCustom.exe --disable portal-revision
-TBCheckCustom.exe --disable portal
-TBCheckCustom.exe --checks mismatch,spelling,client
-TBCheckCustom.exe --list-checks
+QA-TB-Custom-Checker-v1.0.exe --disable portal-revision
+QA-TB-Custom-Checker-v1.0.exe --disable portal
+QA-TB-Custom-Checker-v1.0.exe --enable previews
+QA-TB-Custom-Checker-v1.0.exe --checks mismatch,spelling,client
+QA-TB-Custom-Checker-v1.0.exe --list-checks
 ```
 
 `--disable` / `--enable` / `--checks` also work on `drawing-qa check` and the other exes. Extraction failures (UNDETECTED, INCOMPLETE, ERROR) cannot be turned off.
@@ -59,12 +60,12 @@ The exe looks at PDFs in **that folder**, not subfolders (unless `--recursive` i
 
 ## Portal document list (optional)
 
-If a client-portal export (Excel or CSV) is in the drawings folder, TBCheck compares each PDF with that list. This is a read-only check; it does not update the portal or any register.
+If a client-portal export (Excel or CSV) is in the drawings folder, QA-TB-Checker compares each PDF with that list. This is a read-only check; it does not update the portal or any register.
 
 **How the list is chosen**
 
-- Drop the spreadsheet onto `TBCheck.exe` (Windows passes that path as an argument). PDFs are still taken from the folder that contains the exe.
-- Or leave the export in the drawings folder. Names containing Listing, Document List, Asite, 4Project, Export, or Dump are preferred. IRS / Drawing Schedule / TBCheck reports are ignored.
+- Drop the spreadsheet onto `QA-TB-Checker-v1.0.exe`, on its own or together with selected PDFs. Windows passes those paths as arguments.
+- Or leave the export in the drawings folder. Names containing Listing, Document List, Asite, 4Project, Export, or Dump are preferred. IRS / Drawing Schedule / TBCheck / QA-TB reports are ignored.
 - Or pass `--document-list path\to\export.xlsx`, or `drawing-qa check path\to\export.xlsx` (PDFs are scanned in that file's folder).
 
 If no usable list is found, the rest of the QA run is unchanged.
@@ -76,7 +77,7 @@ If no usable list is found, the rest of the QA run is unchanged.
 - Drawing not on the portal: first issue should be **P01**. **WCR** also allows **C01** (most of that project skips P and starts at C01).
 - Titles are compared when both the portal list and the title block have one. Wording stays neutral: they should match, so one needs changing.
 
-If the portal list has a workflow/status column **and** any drawing cannot be uploaded, TBCheck also writes `{project}_{ddmmyy}_document_control.xlsx` for the client's document control, and a **Document control** tab in the main workbook. If every drawing is already uploadable, neither is written. Drag the sidecar into an email. It only lists drawings that **cannot be uploaded** because the issue already on the portal is not status A, B, or C (so it cannot be superseded). Proposed revision is the next issue after the current portal revision — after any designer corrections — so a skipped drawing revision (C01 on the portal, C03 on the sheet) is shown as C02, not C03. The sheet shows a count of those files only, then document reference, title, current revision, proposed revision, and the current portal status with “Please change to A, B, or C”. Drawings that are not on the portal yet, that are already A/B/C, or that are **QA Approved** (internal QA done; a new revision can still be uploaded), are omitted. Project-specific status wordings (for example 4Projects “A Proceed”, Asite “A - Authorized and Accepted”, WCR “EA+DM - Status A”, Holloway Park “Construction”) are in `document_lists.yaml`.
+If the portal list has a workflow/status column **and** any drawing cannot be uploaded, QA-TB-Checker also writes `{project}_{ddmmyy}_document_control.xlsx` for the client's document control, and a **Document control** tab in the main workbook. If every drawing is already uploadable, neither is written. Drag the sidecar into an email. It only lists drawings that **cannot be uploaded** because the issue already on the portal is not status A, B, or C (so it cannot be superseded). Proposed revision is the next issue after the current portal revision — after any designer corrections — so a skipped drawing revision (C01 on the portal, C03 on the sheet) is shown as C02, not C03. The sheet shows a count of those files only, then document reference, title, current revision, proposed revision, and the current portal status with “Please change to A, B, or C”. Drawings that are not on the portal yet, that are already A/B/C, or that are **QA Approved** (internal QA done; a new revision can still be uploaded), are omitted. Project-specific status wordings (for example 4Projects “A Proceed”, Asite “A - Authorized and Accepted”, WCR “EA+DM - Status A”, Holloway Park “Construction”) are in `document_lists.yaml`.
 
 Column headers are matched by name (not letter) using [`src/drawing_qa/default_config/document_lists.yaml`](src/drawing_qa/default_config/document_lists.yaml). That file covers 4Projects, Asite, and DocHosting CSV dumps. Per-project `first_revisions`, status maps, and filename search keys live in the same file.
 
@@ -123,7 +124,7 @@ Revision pattern and field count are set in [`src/drawing_qa/default_config/sett
 
 ## Title-block layouts
 
-Default layouts live in [`src/drawing_qa/default_config/title_blocks/`](src/drawing_qa/default_config/title_blocks/). That folder includes the current MBS right-hand block (`mbs_right`), the same grid on portrait sheets (`mbs_right_portrait`), the older MBS classic block (`mbs_classic`, headings not selectable so values are page clips), and the portrait MBS bottom block (`mbs_bottom`, Status / Number / Amendments). Purpose-of-issue checking uses [`src/drawing_qa/default_config/suitability.yaml`](src/drawing_qa/default_config/suitability.yaml). Add a `projects:` list keyed by the ISO project code (first filename field, e.g. `R456` Trillium, `R459` Oval C+D, `J106309` Barking Riverside). Projects with no list use `suggested:` (Oval C+D) as the whitelist. P vs C pairing (`PURPOSE_MISMATCH`) is the `purpose:` block in that same file. A revision-history description is only compared with the current purpose when that row matches the whitelist; other history text is treated as a note. To customize a deployed copy, put YAML files in `config\title_blocks\` next to the exe and include `config\settings.yaml` plus `config\suitability.yaml`.
+Default layouts live in [`src/drawing_qa/default_config/title_blocks/`](src/drawing_qa/default_config/title_blocks/). That folder includes the current MBS right-hand block (`mbs_right`), the same grid shifted left on landscape schematics (`mbs_right_wide`), the same grid on portrait sheets (`mbs_right_portrait`), the older MBS classic block (`mbs_classic`, headings not selectable so values are page clips), and the portrait MBS bottom block (`mbs_bottom`, Status / Number / Amendments). Purpose-of-issue checking uses [`src/drawing_qa/default_config/suitability.yaml`](src/drawing_qa/default_config/suitability.yaml). Add a `projects:` list keyed by the ISO project code (first filename field, e.g. `R456` Trillium, `R459` Oval C+D, `J106309` Barking Riverside). Projects with no list use `suggested:` (Oval C+D) as the whitelist. P vs C pairing (`PURPOSE_MISMATCH`) is the `purpose:` block in that same file. A revision-history description is only compared with the current purpose when that row matches the whitelist; other history text is treated as a note. To customize a deployed copy, put YAML files in `config\title_blocks\` next to the exe and include `config\settings.yaml` plus `config\suitability.yaml`.
 
 Typical workflow for a new style:
 
@@ -135,12 +136,12 @@ Typical workflow for a new style:
 
 ## Report
 
-The workbook has a summary plus Review needed, DWG pairing, High confidence, and All documents. When drawings need CAD changes, it also has a **Designer actions** tab and a one-tab `_designer.xlsx` workbook for email. Send that to the design team. Use **Review needed** when you need the full evidence.
+The workbook has a summary plus Review needed, DWG pairing, High confidence, and All documents. When drawings need CAD changes, it also has a **Designer actions** tab, a one-tab `_designer.xlsx` workbook for email, and a `_designer.txt` list for pasting comments into a CDE. Send the Excel to the design team. Use **Review needed** when you need the full evidence.
 
-Reports are named `{project}_{ddmmyy}.xlsx` from the project name in `suitability.yaml` (or the ISO project code if there is no name) and today's date. If any drawing needs designer action, `{project}_{ddmmyy}_designer.xlsx` is written beside it. If any drawing needs a portal status change, `{project}_{ddmmyy}_document_control.xlsx` is written for the client.
+Reports are named `{project}_{ddmmyy}.xlsx` from the project name in `suitability.yaml` (or the ISO project code if there is no name) and today's date. If any drawing needs designer action, `{project}_{ddmmyy}_designer.xlsx` is written beside it for email, plus `{project}_{ddmmyy}_designer.txt` for CDE comments (drawing number, title, then each change on its own line; blank line between drawings). If any drawing needs a portal status change, `{project}_{ddmmyy}_document_control.xlsx` is written for the client.
 
 - **Summary** — confidence counts, status counts, rename counts when files were renamed, and what each status means
-- **Designer actions** — also a `_designer.xlsx` file for email, only when at least one drawing needs CAD changes. Short counts at the top, then drawing number, title, and plain-language changes. Same drawings as Review needed; no previews. Purpose-of-issue issues point at the approved list at the bottom of that sheet rather than guessing a status.
+- **Designer actions** — also a `_designer.xlsx` file for email, only when at least one drawing needs CAD changes. Short counts at the top, then drawing number, title, and plain-language changes. Same drawings as Review needed; no previews. Purpose-of-issue issues point at the approved list at the bottom of that sheet rather than guessing a status. `_designer.txt` is the same drawings as a text list for pasting into a CDE comment (no sheet footer, no numbering).
 - **Document control** — also a `_document_control.xlsx` file for email, only when at least one drawing needs action. Drawings that cannot be uploaded until the portal status is A, B, or C. QA Approved is omitted (that workflow already allows a new revision). Proposed revision is the next portal issue after designer corrections (not a skipped or wrong revision on the drawing).
 - **Review needed** — mismatches, history disagreements, incomplete reads, undetected layouts, parse errors, plus field previews
 - **DWG pairing** — missing CAD copies and `.1` vs `-1` sheet-number differences
@@ -181,4 +182,4 @@ pip install -e ".[build]"
 python scripts/build_exe.py
 ```
 
-On Linux that produces `dist/TBCheck`, `dist/TBCheckRename`, and `dist/TBCheckCustom` (not Windows `.exe` files). Build the Windows exes with `build_exe.bat` on Windows.
+On Linux that produces `dist/QA-TB-Checker-v1.0`, `dist/QA-TB-File-Renamer-v1.0`, and `dist/QA-TB-Custom-Checker-v1.0` (not Windows `.exe` files). Build the Windows exes with `build_exe.bat` on Windows.

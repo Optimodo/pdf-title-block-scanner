@@ -215,7 +215,7 @@ def test_custom_entry_prints_banner(tmp_path: Path, monkeypatch, capsys):
     code = custom_main(["--disable", "portal", "--no-pause"])
     assert code == 0
     out = capsys.readouterr().out
-    assert "TBCheckCustom" in out
+    assert "QA-TB-Custom-Checker" in out
     assert "portal-revision" in out
 
 
@@ -236,6 +236,109 @@ def test_custom_prompt_toggles_portal_revision(tmp_path: Path, monkeypatch, caps
     out = capsys.readouterr().out
     assert "12 QA checks" in out
     assert "Disabled checks: portal-revision" in out
+
+
+def test_custom_prompt_can_turn_on_field_previews(tmp_path: Path, monkeypatch, capsys):
+    from drawing_qa.cli_custom import main as custom_main
+
+    write_bottom_right_pdf(
+        tmp_path / "ABC-WXY-ZZ-00-DR-A-0001-P01.pdf",
+        document_reference="ABC-WXY-ZZ-00-DR-A-0001",
+        title="Ground Floor GA",
+        revision="P01",
+    )
+    monkeypatch.setattr("drawing_qa.cli.app_dir", lambda: tmp_path)
+    answers = iter(["13", ""])
+    monkeypatch.setattr("builtins.input", lambda *a, **k: next(answers))
+    code = custom_main(["--prompt-checks", "--no-pause"])
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "previews" in out
+    assert "Field previews: on" in out
+
+
+def test_dropped_pdfs_are_checked_not_the_whole_folder(tmp_path: Path, monkeypatch):
+    keep = write_bottom_right_pdf(
+        tmp_path / "ABC-WXY-ZZ-00-DR-A-0001-P01.pdf",
+        document_reference="ABC-WXY-ZZ-00-DR-A-0001",
+        title="Ground Floor GA",
+        revision="P01",
+    )
+    write_bottom_right_pdf(
+        tmp_path / "ABC-WXY-ZZ-00-DR-A-0002-P01.pdf",
+        document_reference="ABC-WXY-ZZ-00-DR-A-0002",
+        title="First Floor GA",
+        revision="P01",
+    )
+    monkeypatch.setattr("drawing_qa.cli.app_dir", lambda: tmp_path)
+    code = main([str(keep), "--no-pause"])
+    assert code == 0
+    from openpyxl import load_workbook
+
+    wb = load_workbook(tmp_path / f"{_abc_report_stem()}.xlsx")
+    names = " ".join(
+        str(cell)
+        for row in wb["All documents"].iter_rows(min_row=2, values_only=True)
+        for cell in row
+        if cell
+    )
+    assert "0001" in names
+    assert "0002" not in names
+
+
+def test_dropped_pdf_and_listing_use_the_list(tmp_path: Path, monkeypatch, capsys):
+    from openpyxl import Workbook, load_workbook
+
+    pdf = write_bottom_right_pdf(
+        tmp_path / "ABC-WXY-ZZ-00-DR-A-0001-P02.pdf",
+        document_reference="ABC-WXY-ZZ-00-DR-A-0001",
+        title="Ground Floor GA",
+        revision="P02",
+    )
+    write_bottom_right_pdf(
+        tmp_path / "ABC-WXY-ZZ-00-DR-A-0002-P01.pdf",
+        document_reference="ABC-WXY-ZZ-00-DR-A-0002",
+        title="First Floor GA",
+        revision="P01",
+    )
+    listing = tmp_path / "OVCD Document Listing.xlsx"
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["Original Doc Ref (Non-Standard)", "Description", "Revision"])
+    ws.append(["ABC-WXY-ZZ-00-DR-A-0001", "Ground Floor GA", "P01"])
+    wb.save(listing)
+    monkeypatch.setattr("drawing_qa.cli.app_dir", lambda: tmp_path)
+    code = main([str(pdf), str(listing), "--no-pause"])
+    assert code == 0
+    captured = capsys.readouterr()
+    assert "Selected 1 PDF" in captured.out
+    assert "OVCD Document Listing.xlsx" in captured.out
+    report = load_workbook(tmp_path / f"{_abc_report_stem()}.xlsx")
+    names = " ".join(
+        str(cell)
+        for row in report["All documents"].iter_rows(min_row=2, values_only=True)
+        for cell in row
+        if cell
+    )
+    assert "0001" in names
+    assert "0002" not in names
+
+
+def test_dropped_dwg_only_exits_without_scanning_folder(tmp_path: Path, monkeypatch, capsys):
+    write_bottom_right_pdf(
+        tmp_path / "ABC-WXY-ZZ-00-DR-A-0001-P01.pdf",
+        document_reference="ABC-WXY-ZZ-00-DR-A-0001",
+        title="Ground Floor GA",
+        revision="P01",
+    )
+    dwg = tmp_path / "ABC-WXY-ZZ-00-DR-A-0001-P01.dwg"
+    dwg.write_bytes(b"not a real dwg")
+    monkeypatch.setattr("drawing_qa.cli.app_dir", lambda: tmp_path)
+    code = main([str(dwg), "--no-pause"])
+    assert code == 2
+    assert "No PDF files in the dropped selection" in capsys.readouterr().out
+    assert not (tmp_path / f"{_abc_report_stem()}.xlsx").is_file()
+
 
 
 

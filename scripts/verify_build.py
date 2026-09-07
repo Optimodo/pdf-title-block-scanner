@@ -17,7 +17,11 @@ def run(title: str, args: list[str]) -> None:
 def main() -> int:
     run("pytest", [sys.executable, "-m", "pytest", "-q"])
     run("PyInstaller", [sys.executable, str(ROOT / "scripts" / "build_exe.py")])
-    exe = ROOT / "dist" / ("TBCheck.exe" if sys.platform == "win32" else "TBCheck")
+    sys.path.insert(0, str(ROOT / "src"))
+    from drawing_qa.version import TOOL_CHECKER, versioned_exe_name
+
+    built = versioned_exe_name(TOOL_CHECKER)
+    exe = ROOT / "dist" / (f"{built}.exe" if sys.platform == "win32" else built)
     if not exe.is_file():
         print(f"ERROR: expected build output at {exe}", file=sys.stderr)
         return 1

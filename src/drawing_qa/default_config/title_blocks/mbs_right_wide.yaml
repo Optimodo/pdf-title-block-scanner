@@ -1,0 +1,64 @@
+# MBS right-hand title block on landscape sheets where the stamp sits
+# further left than mbs_right. Oval C+D access/control schematics (A0,
+# rotation 270) print NUMBER / SUITABILITY around x=0.64, so mbs_right's
+# 0.78 crop misses them. TITLE still sits in the bottom band (unlike the
+# taller mbs_right grid), which keeps this layout from stealing those sheets.
+id: mbs_right_wide
+name: MBS right-hand title block (wide landscape)
+orientation: landscape
+min_score: 0.75
+region:
+  left: 0.62
+  top: 0.80
+  right: 1.0
+  bottom: 1.0
+history:
+  relative_to: page
+  region:
+    left: 0.46
+    top: 0.90
+    right: 0.635
+    bottom: 1.0
+  min_rows: 2
+anchors:
+  - NUMBER
+  - TITLE
+  - REVISION
+  - SUITABILITY
+  - AMENDMENTS
+  - PROJECT
+  - CLIENT
+  - DESCRIPTION
+  - BY
+  - DESIGNED BY
+  - DRAWN BY
+  - CHECKED BY
+  - SCALES
+  - PROJECT NO
+  - PROJECT NUMBER
+required_anchor_groups:
+  - [NUMBER]
+  - [REVISION, REV]
+  - [SUITABILITY]
+  - [TITLE]
+fields:
+  document_reference:
+    labels: [NUMBER, DRAWING NO, DRAWING NUMBER, DOCUMENT NUMBER]
+    direction: below
+    pattern: "[A-Z0-9]+(?:-[A-Z0-9]+){5}-[0-9]+(?:-[0-9]+)?(?:\\s*[.][0-9]+)?"
+  title:
+    labels: [TITLE, DRAWING TITLE]
+    direction: below
+  revision:
+    labels: [REVISION, REV]
+    direction: below
+    pattern: "(?:[PC]\\d{2}|[A-Z]\\d?)"
+  suitability:
+    labels: [SUITABILITY, STATUS, PURPOSE OF ISSUE]
+    direction: auto
+  date:
+    labels: [DATE, ISSUE DATE]
+    direction: auto
+  client:
+    labels: [CLIENT, CLIENT NAME]
+    direction: below

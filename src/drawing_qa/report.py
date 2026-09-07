@@ -16,12 +16,14 @@ from drawing_qa.designer_brief import (
     designer_doc_ref,
     designer_purpose_groups,
     designer_title,
+    format_designer_text_report,
 )
 from drawing_qa.document_list import blocked_uploads
 from drawing_qa.dwg_pairing import find_dwg_files, unpaired_dwgs
 from drawing_qa.models import CheckStatus, Confidence, DocumentResult
 from drawing_qa.paths import (
     designer_report_path,
+    designer_text_report_path,
     document_control_report_path,
     next_available_paired_report_path,
     sanitize_filename_part,
@@ -735,6 +737,17 @@ def write_designer_report(results: list[DocumentResult], output: Path) -> Path |
     return output
 
 
+def write_designer_text_report(results: list[DocumentResult], output: Path) -> Path | None:
+    """Plain-text CDE comment list: doc-ref, title, then each change on its own line."""
+    review = [item for item in results if item.confidence == Confidence.REVIEW]
+    if not review:
+        return None
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with output.open("w", encoding="utf-8", newline="\n") as handle:
+        handle.write(format_designer_text_report(review))
+    return output
+
+
 DOCCONTROL_COLUMNS = [
     ("Drawing number", 38),
     ("Title", 48),
@@ -882,5 +895,6 @@ def write_report(results: list[DocumentResult], output: Path) -> Path:
     with timing_span("report_save"):
         wb.save(output)
         write_designer_report(results, designer_report_path(output))
+        write_designer_text_report(results, designer_text_report_path(output))
         write_document_control_report(results, document_control_report_path(output))
     return output

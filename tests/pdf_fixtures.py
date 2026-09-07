@@ -309,6 +309,70 @@ def write_mbs_right_portrait_pdf(
     return path
 
 
+def write_mbs_right_wide_pdf(
+    path: Path,
+    *,
+    document_reference: str,
+    title: str,
+    revision: str,
+    suitability: str = "S3",
+    date: str = "18.08.26",
+    client: str = "Berkeley Homes",
+    history: list[tuple[str, str, str]] | None = None,
+) -> Path:
+    """Landscape A0 sheet with the MBS stamp shifted left of mbs_right (schematics)."""
+    width, height = 2384.0, 1684.0
+    doc = pymupdf.open()
+    page = doc.new_page(width=width, height=height)
+
+    def put(xf: float, yf: float, text: str, size: float = 12) -> None:
+        page.insert_text((xf * width, yf * height), text, fontsize=size)
+
+    put(0.637, 0.832, "Suitability", 8)
+    put(0.804, 0.832, "Project", 8)
+    put(0.862, 0.838, "Oval Village", 12)
+    put(0.690, 0.847, "Review & Comment", 10)
+    put(0.788, 0.854, suitability.split()[0] if suitability else "S3", 12)
+    put(0.804, 0.864, "Title", 8)
+    title_y = 0.869
+    for line in title.split("\n"):
+        put(0.841, title_y, line, 12)
+        title_y += 0.020
+    put(0.750, 0.872, "Project No", 8)
+    put(0.638, 0.875, "Designed by", 8)
+    put(0.759, 0.882, "BER-259", 10)
+    put(0.638, 0.892, "Drawn by", 8)
+    put(0.694, 0.892, "Date", 8)
+    put(0.725, 0.894, date, 10)
+    put(0.803, 0.904, "Client", 8)
+    put(0.750, 0.906, "Computer File No", 8)
+    put(0.868, 0.919, client, 10)
+    rows = history or [
+        ("P02", "04.09.26", "ADDRESSED COMMENTS"),
+        ("P01", date, "REVIEW & COMMENT"),
+    ]
+    y = 0.918
+    for rev, when, desc in rows:
+        put(0.469, y, rev, 9)
+        put(0.481, y, when, 9)
+        put(0.500, y, desc, 9)
+        put(0.625, y, "J.G", 8)
+        y += 0.013
+    put(0.776, 0.930, "Revision", 8)
+    put(0.638, 0.931, "Number", 8)
+    put(0.468, 0.946, "Rev", 8)
+    put(0.484, 0.946, "Date", 8)
+    put(0.547, 0.946, "Description", 8)
+    put(0.625, 0.946, "By", 8)
+    put(0.775, 0.951, revision, 16)
+    put(0.650, 0.954, document_reference, 12)
+    put(0.536, 0.964, "Amendments", 9)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    doc.save(path)
+    doc.close()
+    return path
+
+
 def write_rotated_number_pdf(path: Path) -> Path:
     """Portrait page rotated 270° with a label in unrotated space (bottom-left)."""
     doc = pymupdf.open()

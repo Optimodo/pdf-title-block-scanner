@@ -214,6 +214,9 @@ def get_mep_construction_terms() -> set[str]:
         "th",  # Townhouse
         "townhouse",
         "townhouses",
+        "whc",  # Wheelchair accessible unit
+        "wheelchair",
+        "wheelchairs",
         "resi",  # Residential
         "residential",
         "communal",

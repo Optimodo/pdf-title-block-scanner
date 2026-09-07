@@ -57,6 +57,11 @@ def designer_report_path(main: Path) -> Path:
     return main.with_name(f"{main.stem}_designer{main.suffix}")
 
 
+def designer_text_report_path(main: Path) -> Path:
+    """Sidecar text list: {stem}_designer.txt for pasting CDE comments."""
+    return main.with_name(f"{main.stem}_designer.txt")
+
+
 def document_control_report_path(main: Path) -> Path:
     """Sidecar workbook: {stem}_document_control.xlsx for client document control."""
     return main.with_name(f"{main.stem}_document_control{main.suffix}")
@@ -86,8 +91,14 @@ def next_available_paired_report_path(folder: Path, stem: str) -> Path:
         suffix = "" if n == 0 else f"-{n}"
         main = folder / f"{stem}{suffix}.xlsx"
         designer = designer_report_path(main)
+        designer_text = designer_text_report_path(main)
         control = document_control_report_path(main)
-        if not main.exists() and not designer.exists() and not control.exists():
+        if (
+            not main.exists()
+            and not designer.exists()
+            and not designer_text.exists()
+            and not control.exists()
+        ):
             return main
         n += 1
 

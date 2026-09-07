@@ -1,7 +1,13 @@
 from pathlib import Path
 
 from drawing_qa.compare import build_result
-from drawing_qa.designer_brief import designer_actions, designer_doc_ref, designer_title
+from drawing_qa.designer_brief import (
+    cde_comment_block,
+    designer_actions,
+    designer_doc_ref,
+    designer_title,
+    format_designer_text_report,
+)
 from drawing_qa.models import (
     CheckStatus,
     Confidence,
@@ -62,6 +68,63 @@ def test_revision_mismatch_tells_designer_to_change_title_block():
     assert "title block" in text.lower()
     assert designer_doc_ref(result) == "ABC-WXY-ZZ-00-DR-A-0001"
     assert designer_title(result) == "Ground Floor GA"
+
+
+def test_cde_comment_block_is_three_plain_lines():
+    result = build_result(_base(filename_rev="P01", titleblock_rev="P03"), COMPARE_RULES)
+    block = cde_comment_block(result)
+    lines = block.splitlines()
+    assert lines[0] == "ABC-WXY-ZZ-00-DR-A-0001"
+    assert lines[1] == "Ground Floor GA"
+    assert "P03" in lines[2]
+    assert "P01" in lines[2]
+    assert not any(line.startswith("1. ") for line in lines)
+
+
+def test_cde_purpose_omits_sheet_footer():
+    result = DocumentResult(
+        path=Path("R459-MBS-DZ-ZZ-DR-W-60001-P01.pdf"),
+        filename=FilenameFields(
+            raw_stem="R459-MBS-DZ-ZZ-DR-W-60001-P01",
+            document_reference="R459-MBS-DZ-ZZ-DR-W-60001",
+            revision="P01",
+            parse_ok=True,
+        ),
+        titleblock=TitleBlockFields(
+            document_reference="R459-MBS-DZ-ZZ-DR-W-60001",
+            title="Roof Plan",
+            revision="P01",
+            suitability="S4 - Construction",
+        ),
+        status=CheckStatus.SUITABILITY_ERROR,
+        issues=[CheckStatus.SUITABILITY_ERROR],
+        allowed_suitability=["S3 - For Review & Comment"],
+    )
+    excel = designer_actions(result)
+    comment = cde_comment_block(result)
+    assert "see bottom of this sheet" in excel.lower()
+    assert "see bottom of this sheet" not in comment.lower()
+    assert "approved list" in comment.lower()
+    assert comment.splitlines()[:2] == [
+        "R459-MBS-DZ-ZZ-DR-W-60001",
+        "Roof Plan",
+    ]
+
+
+def test_designer_text_report_separates_drawings_with_a_blank_line():
+    first = build_result(_base(filename_rev="P01", titleblock_rev="P03"), COMPARE_RULES)
+    second = build_result(
+        _base(filename_rev="P01", titleblock_rev="P02", title="First Floor GA"),
+        COMPARE_RULES,
+    )
+    second.filename.document_reference = "ABC-WXY-ZZ-00-DR-A-0002"
+    second.titleblock.document_reference = "ABC-WXY-ZZ-00-DR-A-0002"
+    text = format_designer_text_report([first, second])
+    blocks = text.strip().split("\n\n")
+    assert len(blocks) == 2
+    assert blocks[0].startswith("ABC-WXY-ZZ-00-DR-A-0001\nGround Floor GA\n")
+    assert blocks[1].startswith("ABC-WXY-ZZ-00-DR-A-0002\nFirst Floor GA\n")
+    assert text.endswith("\n")
 
 
 def test_doc_ref_mismatch_states_filename_and_both_numbers():

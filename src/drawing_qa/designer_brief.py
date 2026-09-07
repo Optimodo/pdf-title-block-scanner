@@ -172,8 +172,13 @@ def _history_purpose_is_status(result: DocumentResult) -> bool:
     return suitability_is_allowed(value, allowed)
 
 
-def _purpose_action(result: DocumentResult, issues: list[CheckStatus]) -> str | None:
-    """One combined purpose-of-issue instruction; points at the sheet list."""
+def _purpose_action(
+    result: DocumentResult,
+    issues: list[CheckStatus],
+    *,
+    sheet_ref: bool = True,
+) -> str | None:
+    """One combined purpose-of-issue instruction; Excel text can point at the sheet list."""
     purpose_flags = [
         item for item in issues if item in _PURPOSE_STATUSES and item != CheckStatus.PURPOSE_INCONSISTENT
     ]
@@ -187,26 +192,30 @@ def _purpose_action(result: DocumentResult, issues: list[CheckStatus]) -> str | 
         return None
 
     tb = result.titleblock
+    approved_ref = _APPROVED_LIST_REF if sheet_ref else "from the approved list"
     parts = [f"Purpose of issue is currently {_quote(tb.suitability)}."]
     if CheckStatus.SUITABILITY_ERROR in purpose_flags:
-        parts.append(f"It is not on the approved list ({_SEE_PURPOSE_LIST}).")
+        if sheet_ref:
+            parts.append(f"It is not on the approved list ({_SEE_PURPOSE_LIST}).")
+        else:
+            parts.append("It is not on the approved list.")
     if CheckStatus.PURPOSE_MISMATCH in purpose_flags:
         series = revision_series(tb.revision)
         rev = tb.revision or "This revision"
         if series == "P":
             parts.append(
                 f"{rev} is a P (preliminary) revision, so use a review purpose "
-                f"{_APPROVED_LIST_REF} rather than construction."
+                f"{approved_ref} rather than construction."
             )
         elif series == "C":
             parts.append(
                 f"{rev} is a C (construction) revision, so use a construction purpose "
-                f"{_APPROVED_LIST_REF} rather than review."
+                f"{approved_ref} rather than review."
             )
         else:
             parts.append(
                 "The revision and purpose of issue do not belong together. "
-                f"Use a matching purpose {_APPROVED_LIST_REF}."
+                f"Use a matching purpose {approved_ref}."
             )
     if hist_bad:
         latest = tb.history.latest if tb.history else None
@@ -362,12 +371,12 @@ def _client_action(result: DocumentResult) -> str:
     )
 
 
-def designer_actions(result: DocumentResult) -> str:
-    """One or more plain-language instructions for the designer."""
+def designer_action_lines(result: DocumentResult, *, sheet_ref: bool = True) -> list[str]:
+    """Plain-language instructions, one sentence per item (no numbering)."""
     issues = [item for item in result.issues if item != CheckStatus.MULTIPLE_ISSUES]
     if not issues and result.status not in (CheckStatus.MATCH, CheckStatus.MULTIPLE_ISSUES):
         issues = [result.status]
-    purpose_line = _purpose_action(result, issues)
+    purpose_line = _purpose_action(result, issues, sheet_ref=sheet_ref)
     skip_purpose = purpose_line is not None
     upgrade_needed = result.construction_upgrade_required and (
         CheckStatus.PORTAL_REVISION in issues
@@ -393,11 +402,38 @@ def designer_actions(result: DocumentResult) -> str:
             if line not in seen:
                 seen.add(line)
                 lines.append(line)
+    return lines
+
+
+def designer_actions(result: DocumentResult) -> str:
+    """One or more plain-language instructions for the designer Excel sheet."""
+    lines = designer_action_lines(result)
     if not lines:
         return "No designer action required."
     if len(lines) == 1:
         return lines[0]
     return "\n".join(f"{index}. {line}" for index, line in enumerate(lines, start=1))
+
+
+def cde_comment_block(result: DocumentResult) -> str:
+    """Doc-ref, title, then each change on its own line — paste into a CDE comment."""
+    parts: list[str] = []
+    ref = designer_doc_ref(result).strip()
+    title = designer_title(result).strip()
+    if ref:
+        parts.append(ref)
+    if title:
+        parts.append(title)
+    parts.extend(designer_action_lines(result, sheet_ref=False) or ["No designer action required."])
+    return "\n".join(parts)
+
+
+def format_designer_text_report(results: list[DocumentResult]) -> str:
+    """Blank-line-separated CDE comment blocks for every drawing that needs action."""
+    blocks = [cde_comment_block(item) for item in results]
+    if not blocks:
+        return ""
+    return "\n\n".join(blocks) + "\n"
 
 
 def designer_doc_ref(result: DocumentResult) -> str:

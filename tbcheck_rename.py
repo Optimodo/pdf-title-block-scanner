@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""TBCheckRename — QA check then auto-rename to doc-ref_title_revision."""
+"""QA-TB-File-Renamer — QA check then auto-rename to doc-ref_title_revision."""
 
 import sys
 

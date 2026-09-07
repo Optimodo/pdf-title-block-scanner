@@ -5,11 +5,12 @@
 
 enabled: true
 
-# Skip workbooks that are MBS registers or TBCheck reports, not portal dumps.
+# Skip workbooks that are MBS registers or QA-TB reports, not portal dumps.
 skip_name_contains:
   - IRS
   - Drawing Schedule
   - TBCheck
+  - QA-TB
   - _designer
   - document_control
 

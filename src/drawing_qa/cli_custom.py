@@ -1,4 +1,4 @@
-"""Entry point for TBCheckCustom — same QA run with CLI check toggles."""
+"""Entry point for QA-TB-Custom-Checker — same QA run with CLI check toggles."""
 
 import sys
 

@@ -11,6 +11,7 @@ from tests.pdf_fixtures import (
     write_mbs_classic_pdf,
     write_mbs_right_pdf,
     write_mbs_right_portrait_pdf,
+    write_mbs_right_wide_pdf,
     write_plain_pdf,
 )
 
@@ -196,6 +197,20 @@ def test_history_latest_used_not_older_rows(tmp_path: Path, config_dir: Path):
     assert result.status == CheckStatus.MATCH
     assert result.confidence == Confidence.HIGH
     assert result.preview_png is None  # preview.all_files is false; MATCH rows skip crops
+
+
+def test_field_previews_option_crops_match_rows(tmp_path: Path, config_dir: Path):
+    pdf = write_bottom_right_pdf(
+        tmp_path / "ABC-WXY-ZZ-00-DR-A-0001-P01.pdf",
+        document_reference="ABC-WXY-ZZ-00-DR-A-0001",
+        title="Ground Floor GA",
+        revision="P01",
+    )
+    config = load_config(config_dir)
+    config.check_options.field_previews = True
+    result = check_pdf(pdf, config)
+    assert result.status == CheckStatus.MATCH
+    assert result.preview_png is not None
 
 
 def test_history_accepts_original_issue_date_in_title_block(tmp_path: Path, config_dir: Path):
@@ -395,6 +410,33 @@ def test_detects_mbs_right_title_block(tmp_path: Path, config_dir: Path):
     assert result.status == CheckStatus.MATCH
 
 
+def test_detects_mbs_right_wide_title_block(tmp_path: Path, config_dir: Path):
+    pdf = write_mbs_right_wide_pdf(
+        tmp_path / "R459-MBS-DZ-ZZ-DR-W-68200-P02.pdf",
+        document_reference="R459-MBS-DZ-ZZ-DR-W-68200",
+        title="Block D - Access & Control\nSchematic",
+        revision="P02",
+        suitability="S3",
+        date="18.08.26",
+        client="Berkeley Homes",
+        history=[
+            ("P02", "04.09.26", "ADDRESSED COMMENTS"),
+            ("P01", "18.08.26", "REVIEW & COMMENT"),
+        ],
+    )
+    result = check_pdf(pdf, load_config(config_dir))
+    assert result.titleblock.layout_id == "mbs_right_wide"
+    assert result.titleblock.document_reference == "R459-MBS-DZ-ZZ-DR-W-68200"
+    assert result.titleblock.revision == "P02"
+    assert result.titleblock.title == "Block D - Access & Control Schematic"
+    assert result.titleblock.suitability and result.titleblock.suitability.startswith("S3")
+    assert result.titleblock.date == "18.08.26"
+    assert result.titleblock.client == "Berkeley Homes"
+    assert result.titleblock.history.latest is not None
+    assert result.titleblock.history.latest.revision == "P02"
+    assert CheckStatus.UNDETECTED not in result.issues
+
+
 def test_detects_mbs_right_portrait_title_block(tmp_path: Path, config_dir: Path):
     pdf = write_mbs_right_portrait_pdf(
         tmp_path / "WCR-MBS-XX-ZZ-DR-E-6000-C04.pdf",
@@ -411,6 +453,25 @@ def test_detects_mbs_right_portrait_title_block(tmp_path: Path, config_dir: Path
     assert result.titleblock.revision == "C04"
     assert result.titleblock.title == "Typical Electrical Setting Out Elevations"
     assert result.titleblock.client == "Seven Capital Woodrow"
+    assert CheckStatus.UNDETECTED not in result.issues
+
+
+def test_real_ovcd_schematic_title_block_if_present(config_dir: Path):
+    sample = Path(
+        r"c:\Users\MikeMcLean\OneDrive - Malcolm Building Services Ltd"
+        r"\Documents\MBS\Proj\OVCD\up\04-09-26"
+        r"\R459-MBS-DZ-ZZ-DR-W-68200.pdf"
+    )
+    if not sample.is_file():
+        return
+    result = check_pdf(sample, load_config(config_dir))
+    assert result.titleblock.layout_id == "mbs_right_wide"
+    assert result.titleblock.document_reference == "R459-MBS-DZ-ZZ-DR-W-68200"
+    assert result.titleblock.title == "Block D - Access & Control Schematic"
+    assert result.titleblock.revision == "P01"
+    assert result.titleblock.suitability and result.titleblock.suitability.startswith("S3")
+    assert result.titleblock.date == "18.08.26"
+    assert result.titleblock.client == "Berkley Homes"
     assert CheckStatus.UNDETECTED not in result.issues
 
 

@@ -2,7 +2,11 @@ from datetime import datetime
 from pathlib import Path
 
 from drawing_qa.models import CheckStatus, Confidence, DocumentResult, FilenameFields, TitleBlockFields
-from drawing_qa.paths import designer_report_path, document_control_report_path
+from drawing_qa.paths import (
+    designer_report_path,
+    designer_text_report_path,
+    document_control_report_path,
+)
 from drawing_qa.report import (
     DESIGNER_HEADER_ROW,
     DOCCONTROL_HEADER_ROW,
@@ -78,6 +82,11 @@ def test_write_report_also_writes_designer_sidecar(tmp_path: Path):
     assert sheet.cell(DESIGNER_HEADER_ROW, 1).value == "Drawing number"
     assert sheet.cell(DESIGNER_HEADER_ROW + 1, 1).value == "R459-WXY-ZZ-00-DR-A-0001"
     assert main["Designer actions"]["A1"].value == sheet["A1"].value
+    text_side = designer_text_report_path(output)
+    assert text_side.is_file()
+    text = text_side.read_text(encoding="utf-8")
+    assert text.startswith("R459-WXY-ZZ-00-DR-A-0001\n")
+    assert "Ground Floor GA" in text
     assert not document_control_report_path(output).is_file()
 
 
@@ -88,6 +97,7 @@ def test_write_report_skips_designer_when_nothing_to_action(tmp_path: Path):
 
     assert "Designer actions" not in load_workbook(output).sheetnames
     assert not designer_report_path(output).is_file()
+    assert not designer_text_report_path(output).is_file()
 
 
 def test_write_report_writes_document_control_sidecar(tmp_path: Path):

@@ -106,10 +106,19 @@ def check_dwg_pairing(
     results: list[DocumentResult],
     folder: Path,
     *,
+    extra_dwgs: list[Path] | None = None,
     flag_issues: bool = True,
 ) -> list[DocumentResult]:
     """Update results with paired_dwg / dwg_mismatch / dwg_issue and notes."""
-    dwg_files = find_dwg_files(folder)
+    seen: dict[str, Path] = {}
+    search_folders = [folder, *[result.path.parent for result in results]]
+    for search in search_folders:
+        for path in find_dwg_files(search):
+            seen[str(path.resolve()).casefold()] = path
+    for path in extra_dwgs or []:
+        if path.is_file() and path.suffix.lower() == ".dwg":
+            seen[str(path.resolve()).casefold()] = path
+    dwg_files = sorted(seen.values(), key=lambda item: item.name.casefold())
     for result in results:
         result.dwg_files_present = bool(dwg_files)
         result.dwg_issue = None

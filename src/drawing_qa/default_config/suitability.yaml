@@ -1,6 +1,6 @@
 # Accepted purpose-of-issue / suitability / status values.
 #
-# Copy this file (with settings.yaml) into a config\ folder next to TBCheck.exe
+# Copy this file (with settings.yaml) into a config\ folder next to QA-TB-Checker.exe
 # to override the bundled list. Matching ignores case, extra spaces, and treats
 # "&" as "and".
 #
@@ -187,6 +187,7 @@ projects:
   WCR:
     name: West Cromwell Road
     values:
+      - Construction
       - A - Construction
       - A - For Construction
       - S4 - Construction

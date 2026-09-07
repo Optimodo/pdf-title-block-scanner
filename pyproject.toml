@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "drawing-qa"
-version = "0.1.0"
+version = "1.0"
 description = "QA check construction drawing PDFs: compare ISO 19650 filenames with title-block contents."
 readme = "README.md"
 requires-python = ">=3.11"

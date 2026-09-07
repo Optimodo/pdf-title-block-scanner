@@ -1,4 +1,4 @@
-"""Entry point for TBCheckRename — auto-rename to title-block doc ref + title + revision."""
+"""Entry point for QA-TB-File-Renamer — auto-rename to title-block doc ref + title + revision."""
 
 import sys
 

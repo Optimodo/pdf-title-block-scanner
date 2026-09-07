@@ -57,3 +57,19 @@ def test_list_checks_mentions_portal_revision():
     text = format_check_list()
     assert "portal-revision" in text
     assert "--disable portal-revision" in text
+    assert "previews" in text
+    assert "--enable previews" in text
+
+
+def test_enable_previews_is_a_report_option_not_a_qa_check():
+    options = resolve_check_options(enable="previews")
+    assert options.field_previews is True
+    assert options.allows("mismatch")
+    assert "previews" not in options.disabled_ids()
+
+
+def test_parse_check_choice_accepts_previews_number():
+    from drawing_qa.checks import parse_check_choice
+
+    assert parse_check_choice("13") == ["previews"]
+    assert parse_check_choice("previews") == ["previews"]

@@ -4,9 +4,9 @@ cd /d "%~dp0"
 chcp 65001 >nul
 set PYTHONUTF8=1
 set PYTHONIOENCODING=utf-8
-REM Build TBCheck.exe, TBCheckRename.exe, and TBCheckCustom.exe with the project venv.
+REM Build the versioned QA-TB executables with the project venv.
 echo ============================================
-echo Building TBCheck.exe, TBCheckRename.exe, and TBCheckCustom.exe
+echo Building QA-TB-Checker, Custom-Checker, and File-Renamer
 echo ============================================
 echo.
 
@@ -33,9 +33,7 @@ if exist "build" (
     echo Cleaning build directory...
     rmdir /s /q build
 )
-if exist "TBCheck.spec" del TBCheck.spec
-if exist "TBCheckRename.spec" del TBCheckRename.spec
-if exist "TBCheckCustom.spec" del TBCheckCustom.spec
+del /q QA-TB-*.spec TBCheck.spec TBCheckRename.spec TBCheckCustom.spec 2>nul
 
 "%PY%" scripts\build_exe.py
 if errorlevel 1 (
@@ -45,19 +43,17 @@ if errorlevel 1 (
     exit /b 1
 )
 
-if exist "TBCheck.spec" del TBCheck.spec
-if exist "TBCheckRename.spec" del TBCheckRename.spec
-if exist "TBCheckCustom.spec" del TBCheckCustom.spec
+del /q QA-TB-*.spec TBCheck.spec TBCheckRename.spec TBCheckCustom.spec 2>nul
 
 echo.
 echo ============================================
 echo Build complete
 echo ============================================
 echo.
-echo Executables:
-echo   dist\TBCheck.exe        QA report + optional mismatch filename fix
-echo   dist\TBCheckRename.exe  QA report + auto-rename to doc-ref_title_revision
-echo   dist\TBCheckCustom.exe  QA report with --disable / --checks to toggle QA rules
+echo Executables (version is in the file name so you can see if a copy is older):
+echo   dist\QA-TB-Checker-v*.exe         QA report + optional mismatch filename fix
+echo   dist\QA-TB-File-Renamer-v*.exe    QA report + auto-rename to doc-ref_title_revision
+echo   dist\QA-TB-Custom-Checker-v*.exe  QA report with a menu to turn checks on or off
 echo.
 echo Copy an exe into a folder of drawing PDFs and double-click.
 echo Optional: copy a config\ folder next to the exe to override layouts.

@@ -82,7 +82,7 @@ def check_pdf(path: Path, config: AppConfig) -> DocumentResult:
                     config.client_check,
                     check_options=config.check_options,
                 )
-            if (config.preview and config.preview.all_files) or result.status != CheckStatus.MATCH:
+            if _want_all_previews(config) or result.status != CheckStatus.MATCH:
                 with timing_span("preview"):
                     result.preview_png = render_preview(page, result.titleblock)
         finally:
@@ -98,9 +98,15 @@ def check_pdf(path: Path, config: AppConfig) -> DocumentResult:
     return result
 
 
+def _want_all_previews(config: AppConfig) -> bool:
+    if config.check_options and config.check_options.field_previews:
+        return True
+    return bool(config.preview and config.preview.all_files)
+
+
 def _fill_missing_previews(results: list[DocumentResult], config: AppConfig) -> None:
     """Render crops for rows that only became review after folder-level checks."""
-    all_files = bool(config.preview and config.preview.all_files)
+    all_files = _want_all_previews(config)
     for result in results:
         if result.preview_png or result.status == CheckStatus.ERROR:
             continue
@@ -133,6 +139,7 @@ def check_paths(
     standardize: bool = False,
     on_pdf=None,
     document_list: Path | None = None,
+    extra_dwgs: list[Path] | None = None,
 ) -> list[DocumentResult]:
     results: list[DocumentResult] = []
     total = len(paths)
@@ -152,7 +159,10 @@ def check_paths(
             if options.allows("date-regression"):
                 results = check_date_regression(results)
             results = check_dwg_pairing(
-                results, folder, flag_issues=options.allows("dwg")
+                results,
+                folder,
+                extra_dwgs=extra_dwgs,
+                flag_issues=options.allows("dwg"),
             )
             list_cfg = config.document_list
             want_portal = options.allows("portal-revision") or options.allows(

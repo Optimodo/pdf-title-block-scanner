@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from drawing_qa.checker import check_paths, iter_pdfs
@@ -20,6 +21,7 @@ from drawing_qa.extract import require_pymupdf
 from drawing_qa.paths import (
     app_dir,
     designer_report_path,
+    designer_text_report_path,
     document_control_report_path,
     is_frozen,
     resolve_config_dir,
@@ -27,6 +29,7 @@ from drawing_qa.paths import (
 from drawing_qa.rename import RenameStats, apply_renames
 from drawing_qa.report import default_report_path, write_report
 from drawing_qa.timing import format_report as format_timing_report, is_enabled as timing_enabled
+from drawing_qa.version import TOOL_CHECKER, TOOL_CUSTOM, TOOL_RENAMER, tool_banner
 
 
 _TOGGLE_VALUE_FLAGS = {
@@ -69,7 +72,12 @@ def _add_check_toggle_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--prompt-checks",
         action="store_true",
-        help="Ask which QA checks to run before scanning (TBCheckCustom).",
+        help="Ask which QA checks to run before scanning (QA-TB-Custom-Checker).",
+    )
+    parser.add_argument(
+        "--previews",
+        action="store_true",
+        help="Include cropped title-block fields on every drawing in the Excel report.",
     )
     parser.add_argument(
         "--custom-checks",
@@ -82,7 +90,7 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
     toggles = argparse.ArgumentParser(add_help=False)
     _add_check_toggle_args(toggles)
     parser = argparse.ArgumentParser(
-        prog=prog or "TBCheck",
+        prog=prog or TOOL_CHECKER,
         description=(
             "Compare ISO 19650 drawing filenames with title-block contents. "
             "With no arguments, checks every PDF in the folder that contains this program."
@@ -104,7 +112,7 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
         action="store_true",
         help=(
             "Automatically rename every PDF to document-reference_title_revision "
-            "from the title block (TBCheckRename). No prompt."
+            f"from the title block ({TOOL_RENAMER}). No prompt."
         ),
     )
     parser.add_argument(
@@ -276,16 +284,55 @@ def _print_rename_stats(stats: RenameStats) -> None:
         print(f"Failed to rename {stats.failed} file(s)")
 
 
-def _take_dropped_document_list(argv: list[str]) -> tuple[list[str], Path | None]:
-    """Pull a dragged-and-dropped spreadsheet out of argv before argparse.
+@dataclass
+class DroppedSelection:
+    pdfs: list[Path] = field(default_factory=list)
+    dwgs: list[Path] = field(default_factory=list)
+    document_list: Path | None = None
+    ignored: list[Path] = field(default_factory=list)
 
-    Windows passes the dropped path as argv[1]. That is not a subcommand, so
-    argparse would otherwise reject it. Subcommands keep their own paths.
+    @property
+    def has_drawings(self) -> bool:
+        return bool(self.pdfs or self.dwgs)
+
+
+def _is_pdf(path: Path) -> bool:
+    return path.is_file() and path.suffix.lower() == ".pdf"
+
+
+def _is_dwg(path: Path) -> bool:
+    return path.is_file() and path.suffix.lower() == ".dwg"
+
+
+def _unique_paths(paths: list[Path]) -> list[Path]:
+    seen: set[str] = set()
+    result: list[Path] = []
+    for path in paths:
+        key = str(path.resolve()).casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(path)
+    return result
+
+
+def _working_folder(pdfs: list[Path], fallback: Path) -> Path:
+    parents = {path.resolve().parent for path in pdfs}
+    if len(parents) == 1:
+        return next(iter(parents))
+    return fallback
+
+
+def _take_dropped_inputs(argv: list[str]) -> tuple[list[str], DroppedSelection]:
+    """Pull dragged-and-dropped files out of argv before argparse.
+
+    Windows passes every dropped path as an argument. That is not a subcommand,
+    so argparse would otherwise reject PDFs, DWGs, and spreadsheets.
     """
+    dropped = DroppedSelection()
     if not argv or argv[0] in {"check", "inspect"}:
-        return argv, None
+        return argv, dropped
     remaining: list[str] = []
-    dropped: Path | None = None
     skip_next = False
     for item in argv:
         if skip_next:
@@ -298,10 +345,32 @@ def _take_dropped_document_list(argv: list[str]) -> tuple[list[str], Path | None
             skip_next = True
             continue
         candidate = Path(item)
-        if dropped is None and is_spreadsheet(candidate):
-            dropped = candidate
+        if is_spreadsheet(candidate):
+            if dropped.document_list is None:
+                dropped.document_list = candidate
+            else:
+                dropped.ignored.append(candidate)
+            continue
+        if _is_pdf(candidate):
+            dropped.pdfs.append(candidate)
+            continue
+        if _is_dwg(candidate):
+            dropped.dwgs.append(candidate)
+            continue
+        if candidate.is_dir():
+            dropped.pdfs.extend(
+                path for path in candidate.iterdir() if _is_pdf(path)
+            )
+            dropped.dwgs.extend(
+                path for path in candidate.iterdir() if _is_dwg(path)
+            )
+            continue
+        if candidate.exists():
+            dropped.ignored.append(candidate)
             continue
         remaining.append(item)
+    dropped.pdfs = _unique_paths(dropped.pdfs)
+    dropped.dwgs = _unique_paths(dropped.dwgs)
     return remaining, dropped
 
 
@@ -310,6 +379,9 @@ def _print_report_paths(saved: Path) -> None:
     designer = designer_report_path(saved)
     if designer.is_file():
         print(f"Designer: {designer}")
+    designer_text = designer_text_report_path(saved)
+    if designer_text.is_file():
+        print(f"Designer comments: {designer_text}")
     control = document_control_report_path(saved)
     if control.is_file():
         print(f"Document control: {control}")
@@ -338,8 +410,10 @@ def _should_prompt_checks(args: argparse.Namespace) -> bool:
 
 
 def _prompt_check_toggles(initial: CheckOptions | None = None) -> CheckOptions:
-    enabled = set((initial or CheckOptions()).enabled)
-    current = CheckOptions(frozenset(enabled))
+    start = initial or CheckOptions()
+    enabled = set(start.enabled)
+    field_previews = start.field_previews
+    current = CheckOptions(frozenset(enabled), field_previews=field_previews)
     print()
     print(format_check_menu(current))
     print()
@@ -349,28 +423,39 @@ def _prompt_check_toggles(initial: CheckOptions | None = None) -> CheckOptions:
         except EOFError:
             raw = ""
         if not raw:
-            return CheckOptions(frozenset(enabled))
+            return CheckOptions(frozenset(enabled), field_previews=field_previews)
         try:
             names = parse_check_choice(raw)
         except UnknownCheckError as exc:
             print(f"  {exc}")
             continue
         for name in names:
+            if name == "previews":
+                field_previews = not field_previews
+                continue
             if name in enabled:
                 enabled.discard(name)
             else:
                 enabled.add(name)
-        current = CheckOptions(frozenset(enabled))
+        current = CheckOptions(frozenset(enabled), field_previews=field_previews)
         disabled = current.disabled_ids()
+        extras = []
+        if current.field_previews:
+            extras.append("previews on")
         print("  Off: " + (", ".join(disabled) if disabled else "(none)"))
+        if extras:
+            print("  " + ", ".join(extras))
 
 
 def _check_options_from_args(args: argparse.Namespace) -> CheckOptions:
-    return resolve_check_options(
+    options = resolve_check_options(
         only=getattr(args, "checks", None),
         disable=getattr(args, "disable", None),
         enable=getattr(args, "enable", None),
     )
+    if getattr(args, "previews", False):
+        options.field_previews = True
+    return options
 
 
 def _print_tool_banner(
@@ -380,17 +465,19 @@ def _print_tool_banner(
     check_options,
 ) -> None:
     if standardize_names:
-        print("TBCheckRename - Title-block QA + standardize filenames")
+        print(f"{tool_banner(TOOL_RENAMER)} - Title-block QA + standardize filenames")
     elif custom_mode:
-        print("TBCheckCustom - Title-block QA (menu, or --disable / --checks)")
+        print(f"{tool_banner(TOOL_CUSTOM)} - Title-block QA (menu, or --disable / --checks)")
     else:
-        print("TBCheck - Title-block QA")
+        print(f"{tool_banner(TOOL_CHECKER)} - Title-block QA")
     if custom_mode or (check_options and check_options.disabled_ids()):
         disabled = check_options.disabled_ids() if check_options else []
         if disabled:
             print("Disabled checks: " + ", ".join(disabled))
         elif custom_mode:
             print("Checks: all on.  --disable portal-revision   --list-checks")
+    if check_options and check_options.field_previews:
+        print("Field previews: on (every drawing)")
 
 
 def run_folder_check(
@@ -405,6 +492,8 @@ def run_folder_check(
     check_options=None,
     custom_mode: bool = False,
     prompt_checks: bool = False,
+    pdfs: list[Path] | None = None,
+    extra_dwgs: list[Path] | None = None,
 ) -> int:
     folder = folder.resolve()
     config_path = resolve_config_dir(folder, config_dir)
@@ -433,14 +522,28 @@ def run_folder_check(
         config.check_options = check_options
         disabled = check_options.disabled_ids()
         print("Disabled checks: " + (", ".join(disabled) if disabled else "none"))
+        if check_options.field_previews:
+            print("Field previews: on (every drawing)")
         print()
 
-    pdfs = iter_pdfs(folder, recursive=recursive)
+    selected = pdfs is not None
+    if pdfs is None:
+        pdfs = iter_pdfs(folder, recursive=recursive)
+    else:
+        pdfs = [path.resolve() for path in pdfs if _is_pdf(path)]
     if not pdfs:
-        print("No PDF files found in this folder.")
+        if selected:
+            print("No PDF files in the dropped selection.")
+        else:
+            print("No PDF files found in this folder.")
         return 2
 
-    print(f"Found {len(pdfs)} PDF(s)")
+    if selected:
+        print(f"Selected {len(pdfs)} PDF(s)")
+    else:
+        print(f"Found {len(pdfs)} PDF(s)")
+    if extra_dwgs:
+        print(f"Dropped DWG(s): {len(extra_dwgs)} (used for pairing)")
     print()
 
     def on_pdf(index: int, total: int, result) -> None:
@@ -454,6 +557,7 @@ def run_folder_check(
         standardize=standardize_names,
         on_pdf=on_pdf,
         document_list=document_list,
+        extra_dwgs=extra_dwgs,
     )
     if progress:
         print()
@@ -606,11 +710,11 @@ def main(argv: list[str] | None = None) -> int:
             cleaned.append(item)
 
     custom = "--custom-checks" in cleaned
-    parser = build_parser(prog="TBCheckCustom" if custom else "TBCheck")
-    cleaned, dropped_list = _take_dropped_document_list(cleaned)
+    parser = build_parser(prog=TOOL_CUSTOM if custom else TOOL_CHECKER)
+    cleaned, dropped = _take_dropped_inputs(cleaned)
     args = parser.parse_args(cleaned)
-    if dropped_list is not None and getattr(args, "document_list", None) is None:
-        args.document_list = dropped_list
+    if dropped.document_list is not None and getattr(args, "document_list", None) is None:
+        args.document_list = dropped.document_list
     if pause_flag is False:
         args.no_pause = True
         args.pause = False
@@ -624,13 +728,27 @@ def main(argv: list[str] | None = None) -> int:
             print(format_check_list())
             code = 0
         elif args.command is None:
+            if dropped.ignored:
+                print("Ignored (not a PDF, DWG, or portal list):")
+                for path in dropped.ignored:
+                    print(f"  {path.name}")
+                print()
+            folder = app_dir()
+            selected_pdfs = None
+            extra_dwgs = None
+            if dropped.has_drawings:
+                folder = _working_folder(dropped.pdfs, app_dir())
+                selected_pdfs = dropped.pdfs
+                extra_dwgs = dropped.dwgs or None
             code = run_folder_check(
-                app_dir(),
+                folder,
                 standardize_names=getattr(args, "standardize_names", False),
                 document_list=getattr(args, "document_list", None),
                 check_options=_check_options_from_args(args),
                 custom_mode=bool(getattr(args, "custom_checks", False)),
                 prompt_checks=_should_prompt_checks(args),
+                pdfs=selected_pdfs,
+                extra_dwgs=extra_dwgs,
             )
         elif args.command == "check":
             code = cmd_check(args)

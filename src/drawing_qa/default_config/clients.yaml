@@ -1,6 +1,6 @@
 # Title-block client name per ISO 19650 project code (first filename field).
 #
-# Copy this file into a config\ folder next to TBCheck.exe to override.
+# Copy this file into a config\ folder next to QA-TB-Checker.exe to override.
 # Matching ignores case, extra spaces, and treats "&" as "and". An allowed
 # name may be a shorter form of what is printed (Berkeley matches
 # "Berkeley Homes"). Projects with no entry are not checked.
@@ -13,6 +13,7 @@ projects:
     name: West Cromwell Road
     values:
       - Seven Capital Woodrow
+      - SC Woodrow
   R459:
     name: Oval C+D
     values:
