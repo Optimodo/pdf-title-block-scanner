@@ -4,9 +4,13 @@ __pycache__/
 *$py.class
 *.egg-info/
 .eggs/
-dist/
+.venv/
 build/
 *.spec
+
+# PyInstaller work files. Keep the one-file exes so they ship on main.
+dist/*
+!dist/*.exe
 
 # Test / tool output
 .pytest_cache/
