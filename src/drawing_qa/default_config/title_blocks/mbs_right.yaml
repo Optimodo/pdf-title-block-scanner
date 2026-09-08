@@ -50,5 +50,5 @@ fields:
     labels: [DATE, ISSUE DATE]
     direction: auto
   client:
-    labels: [CLIENT, CLIENT NAME]
+    labels: [CLIENT, CLIENT NAME, CLIENT CONTACT]
     direction: auto

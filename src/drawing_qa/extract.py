@@ -165,6 +165,9 @@ def find_label(
                 prev = normalized[i - 1]
                 if prev in {"PROJECT", "CONTRACT", "COMPUTER", "FILE", "DRAWING"}:
                     continue
+            if t == 1 and i + t < n and target == ["CLIENT"] and normalized[i + t] == "CONTACT":
+                # "Client Contact" is a different heading; the Client cell may be a logo.
+                continue
             found = line[i : i + t]
             if exclude and all(exclude.contains_point(w.cx, w.cy) for w in found):
                 continue
@@ -194,7 +197,12 @@ COMMON_STOP_LABELS = [
 ]
 
 
-def _same_line_right(words: list[Word], label_words: list[Word]) -> list[Word]:
+def _same_line_right(
+    words: list[Word],
+    label_words: list[Word],
+    *,
+    min_x0: float | None = None,
+) -> list[Word]:
     left = min(w.x0 for w in label_words)
     y0 = min(w.y0 for w in label_words)
     y1 = max(w.y1 for w in label_words)
@@ -210,6 +218,8 @@ def _same_line_right(words: list[Word], label_words: list[Word]) -> list[Word]:
         # whose centre is to the right of the label centre ("Block" in "Block I").
         if word.x1 < left - 2:
             continue
+        if min_x0 is not None and word.x0 < min_x0:
+            continue
         if abs(word.cy - band_mid) <= vtol:
             chosen.append(word)
     chosen.sort(key=lambda w: w.x0)
@@ -221,8 +231,22 @@ def height_of(words: list[Word]) -> float:
 
 
 # Title values sit under/right of the heading. A wide left band pulls in
-# drawing notes (grid numbers, "2-04", duct sizes) from the sheet body.
+# drawing notes (grid numbers, "2-04", duct sizes, "WORKTOP") from the sheet body.
 _TIGHT_LEFT_BELOW_LABELS = {
+    "TITLE",
+    "DRAWING TITLE",
+    "SUITABILITY",
+    "STATUS",
+    "PURPOSE OF ISSUE",
+    "CLIENT",
+    "CLIENT NAME",
+    "CLIENT CONTACT",
+    "PROJECT",
+    "PROJECT NAME",
+}
+# Wrapped titles need both the same-line fragment and the lines under the heading.
+# Client is a single cell (often a logo); merging below would pick up Rev / P01.
+_MERGE_RIGHT_AND_BELOW = {
     "TITLE",
     "DRAWING TITLE",
     "SUITABILITY",
@@ -259,7 +283,14 @@ def _below(
         extends_below = word.y1 > y1 + overlap_slop
         if word.y0 < y1 - 1 and not extends_below:
             continue
-        if word.x1 < band_left or word.x0 > band_right:
+        if word.x0 > band_right:
+            continue
+        # Tight client/title cells: the value must start in the column. Notes
+        # that only overlap from the left (WORKTOP, grid bubbles) are ignored.
+        if left_pad is not None and left_pad <= 16.0:
+            if word.x0 < band_left:
+                continue
+        elif word.x1 < band_left:
             continue
         # Look far enough for 2–4 centred title lines; stop-labels cut off the next field.
         if word.y0 > y1 + max(height_of(label_words) * 20, 200.0):
@@ -339,11 +370,16 @@ def extract_near_label_words(
         ]
         directions = [direction] if direction != "auto" else ["right", "below"]
         tight_left = normalize_label(used_label or "") in _TIGHT_LEFT_BELOW_LABELS
-        merge_directions = tight_left
+        merge_directions = normalize_label(used_label or "") in _MERGE_RIGHT_AND_BELOW
         collected: list[Word] = []
         for d in directions:
             if d == "right":
-                value_words = _same_line_right(remaining, label_words)
+                label_left = min(w.x0 for w in label_words)
+                value_words = _same_line_right(
+                    remaining,
+                    label_words,
+                    min_x0=(label_left - 16.0) if tight_left else None,
+                )
             elif d == "below":
                 value_words = _below(
                     remaining,

@@ -13,6 +13,7 @@ skip_name_contains:
   - QA-TB
   - _designer
   - document_control
+  - Comments Report
 
 # Prefer these when more than one spreadsheet is in the folder.
 prefer_name_contains:
@@ -24,6 +25,10 @@ prefer_name_contains:
   - Dump
 
 # Tried in order when locating columns on a header row.
+# Default is Oval C+D 4Projects: ISO number in Original Doc Ref (Non-Standard).
+# Trillium and West Cromwell Road also use 4Projects but store the number in
+# Name (column A). Holloway Park DocHosting uses Title; Barking Asite uses Doc Ref.
+# Set doc_ref on those projects below.
 headers:
   doc_ref:
     - Original Doc Ref (Non-Standard)
@@ -38,8 +43,9 @@ headers:
     - Revision
     - Rev
   # 4Projects uses Revision Workflow; Asite / DocHosting use Status.
-  # Revision Workflow must be tried first — 4Projects also has a Status column
-  # that is purpose of issue, not A/B/C workflow.
+  # Revision Workflow is listed first because 4Projects also has a Status column
+  # that is purpose of issue. Asite also has Workflow Status (RUNNING/COMPLETED);
+  # the reader scores columns and keeps Status, not the engine column.
   status:
     - Revision Workflow
     - Workflow State
@@ -87,6 +93,10 @@ status_map:
   Shared: Under Review
   For Commenting: Under Review
   For QA Check: Under Review
+  For Status Change: Under Review
+  Reviewed: Under Review
+  For Information: For Information
+  QA Passed: QA Approved
   Issued: Under Review
   Under Review: Under Review
 
@@ -103,18 +113,23 @@ projects:
     search_keys: [OVCD, OVC, OVD, Oval]
     first_revisions: [P01]
     construction_upgrade: true
+    doc_ref: Original Doc Ref (Non-Standard)
   R456:
     name: Trillium
     search_keys: [Tril, Trillium]
     first_revisions: [P01]
+    doc_ref: Name
   WCR:
     name: West Cromwell Road
     search_keys: [WCR]
     first_revisions: [P01, C01]
+    doc_ref: Name
   HPA:
     name: Holloway Park
     search_keys: [HP, HPA]
     first_revisions: [P01]
+    doc_ref: Title
+    doc_title: Description
     status_map:
       Construction: Status A
       IFC-pending: Under Review
@@ -125,6 +140,8 @@ projects:
     name: Barking Riverside
     search_keys: [BR]
     first_revisions: [P01]
+    doc_ref: Doc Ref
+    status: Status
   JXXXZ18:
     name: Greenwich Peninsula
     search_keys: [GP]

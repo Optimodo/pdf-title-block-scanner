@@ -65,7 +65,7 @@ If a client-portal export (Excel or CSV) is in the drawings folder, QA-TB-Checke
 **How the list is chosen**
 
 - Drop the spreadsheet onto `QA-TB-Checker-v1.0.exe`, on its own or together with selected PDFs. Windows passes those paths as arguments.
-- Or leave the export in the drawings folder. Names containing Listing, Document List, Asite, 4Project, Export, or Dump are preferred. IRS / Drawing Schedule / TBCheck / QA-TB reports are ignored.
+- Or leave the export in the drawings folder. Names containing Listing, Document List, Asite, 4Project, Export, or Dump are preferred. IRS / Drawing Schedule / TBCheck / QA-TB / Comments Report files are ignored.
 - Or pass `--document-list path\to\export.xlsx`, or `drawing-qa check path\to\export.xlsx` (PDFs are scanned in that file's folder).
 
 If no usable list is found, the rest of the QA run is unchanged.
@@ -79,7 +79,7 @@ If no usable list is found, the rest of the QA run is unchanged.
 
 If the portal list has a workflow/status column **and** any drawing cannot be uploaded, QA-TB-Checker also writes `{project}_{ddmmyy}_document_control.xlsx` for the client's document control, and a **Document control** tab in the main workbook. If every drawing is already uploadable, neither is written. Drag the sidecar into an email. It only lists drawings that **cannot be uploaded** because the issue already on the portal is not status A, B, or C (so it cannot be superseded). Proposed revision is the next issue after the current portal revision — after any designer corrections — so a skipped drawing revision (C01 on the portal, C03 on the sheet) is shown as C02, not C03. The sheet shows a count of those files only, then document reference, title, current revision, proposed revision, and the current portal status with “Please change to A, B, or C”. Drawings that are not on the portal yet, that are already A/B/C, or that are **QA Approved** (internal QA done; a new revision can still be uploaded), are omitted. Project-specific status wordings (for example 4Projects “A Proceed”, Asite “A - Authorized and Accepted”, WCR “EA+DM - Status A”, Holloway Park “Construction”) are in `document_lists.yaml`.
 
-Column headers are matched by name (not letter) using [`src/drawing_qa/default_config/document_lists.yaml`](src/drawing_qa/default_config/document_lists.yaml). That file covers 4Projects, Asite, and DocHosting CSV dumps. Per-project `first_revisions`, status maps, and filename search keys live in the same file.
+Column headers are matched by name (not letter) using [`src/drawing_qa/default_config/document_lists.yaml`](src/drawing_qa/default_config/document_lists.yaml). That file covers 4Projects, Asite, and DocHosting CSV dumps. Per-project `first_revisions`, status maps, filename search keys, and which column holds the document number (`doc_ref`: Original Doc Ref on Oval C+D, Name on Trillium and West Cromwell Road, Title on Holloway Park, Doc Ref on Barking Riverside) live in the same file. Asite listings also have a Workflow Status engine column (RUNNING/COMPLETED); the reader uses Status instead (For QA Check, For Status Change, C- Rejected, and so on).
 
 ## Run from source
 

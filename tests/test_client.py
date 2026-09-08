@@ -62,6 +62,27 @@ def test_oval_accepts_berkeley_homes_on_mbs_right(tmp_path: Path, config_dir: Pa
     assert CheckStatus.CLIENT_ERROR not in result.issues
 
 
+def test_client_logo_falls_back_to_client_contact_not_drawing_note(
+    tmp_path: Path, config_dir: Path
+):
+    """Berkeley is a logo in the Client cell; WORKTOP is a sheet note to the left."""
+    from tests.pdf_fixtures import write_mbs_right_pdf
+
+    pdf = write_mbs_right_pdf(
+        tmp_path / "R459-MBS-DZ-ZZ-DR-W-51327-C01.pdf",
+        document_reference="R459-MBS-DZ-ZZ-DR-W-51327",
+        title="Block D Penthouses Utility Cupboard Sections",
+        revision="C01",
+        suitability="S5",
+        client="",
+        drawing_note="WORKTOP",
+    )
+    result = check_pdf(pdf, load_config(config_dir))
+    assert result.titleblock.client == "BERKELEY HOMES"
+    assert CheckStatus.CLIENT_ERROR not in result.issues
+    assert "WORKTOP" not in (result.titleblock.client or "")
+
+
 def test_wrong_client_is_flagged(tmp_path: Path, config_dir: Path):
     pdf = write_bottom_right_pdf(
         tmp_path / "WCR-MBS-B7-XX-DR-M-5301-C01.pdf",

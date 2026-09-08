@@ -205,3 +205,38 @@ def test_title_below_includes_glyphs_overlapping_heading():
     assert found is not None
     assert found[0] == "B4 - Kitchen Electrical Setting-out Layout - Apartment Type B4-1A"
 
+
+def test_client_ignores_drawing_notes_left_of_heading():
+    """Client cell is often a logo; notes like WORKTOP sit left of the stamp."""
+    words = [
+        Word(x0=1400, y0=820, x1=1422, y1=832, text="Client"),
+        Word(x0=1315, y0=836, x1=1349, y1=848, text="WORKTOP"),
+        Word(x0=1400, y0=898, x1=1422, y1=910, text="Client"),
+        Word(x0=1424, y0=898, x1=1455, y1=910, text="Contact"),
+        Word(x0=1480, y0=910, x1=1524, y1=922, text="BERKELEY"),
+        Word(x0=1526, y0=910, x1=1557, y1=922, text="HOMES"),
+    ]
+    found = extract_near_label_words(
+        words,
+        ["CLIENT", "CLIENT NAME", "CLIENT CONTACT"],
+        "auto",
+        stop_labels=["SUITABILITY", "PROJECT NAME"],
+    )
+    assert found is not None
+    assert found[0] == "BERKELEY HOMES"
+    assert "WORKTOP" not in found[0]
+
+
+def test_find_label_does_not_treat_client_contact_as_client():
+    from drawing_qa.extract import find_label
+
+    words = [
+        Word(x0=100, y0=10, x1=130, y1=20, text="Client"),
+        Word(x0=132, y0=10, x1=180, y1=20, text="Contact"),
+        Word(x0=190, y0=10, x1=250, y1=20, text="BERKELEY"),
+    ]
+    assert find_label(words, "CLIENT") is None
+    contact = find_label(words, "CLIENT CONTACT")
+    assert contact is not None
+    assert [w.text for w in contact] == ["Client", "Contact"]
+

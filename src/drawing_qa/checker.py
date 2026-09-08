@@ -184,7 +184,9 @@ def check_paths(
                 )
                 if list_path is not None:
                     try:
-                        index = load_document_list(list_path, list_cfg.layout)
+                        index = load_document_list(
+                            list_path, list_cfg.layout, project_codes=project_codes
+                        )
                     except Exception:  # noqa: BLE001 - optional check must not abort QA
                         index = None
                     if index is not None and index.by_ref:

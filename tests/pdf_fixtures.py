@@ -209,6 +209,7 @@ def write_mbs_right_pdf(
     date: str = "14.08.26",
     client: str = "Berkeley",
     history: list[tuple[str, str, str]] | None = None,
+    drawing_note: str | None = None,
 ) -> Path:
     """Landscape sheet with an MBS-style right-hand title block (visual coords)."""
     doc = pymupdf.open()
@@ -234,8 +235,14 @@ def write_mbs_right_pdf(
     for line in title.split("\n"):
         page.insert_text((1923, title_y), line, fontsize=12)
         title_y += 28
+    if drawing_note:
+        # Sheet note in the 0.78 crop strip, left of the Client cell (logo / no text).
+        page.insert_text((1880, 1325), drawing_note, fontsize=10)
     page.insert_text((1918, 1296), "Client", fontsize=8)
-    page.insert_text((2085, 1320), client, fontsize=10)
+    if client:
+        page.insert_text((2085, 1320), client, fontsize=10)
+    page.insert_text((1918, 1348), "Client Contact", fontsize=8)
+    page.insert_text((2085, 1372), "BERKELEY HOMES", fontsize=10)
     page.insert_text((1914, 1446), "Suitability", fontsize=8)
     page.insert_text((2041, 1468), "REVIEW & COMMENT", fontsize=11)
     page.insert_text((2271, 1468), suitability, fontsize=12)

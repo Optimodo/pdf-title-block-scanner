@@ -15,6 +15,7 @@ from drawing_qa.filename import parse_filename
 from drawing_qa.models import CheckStatus, DocumentResult, record_issue
 from drawing_qa.tokens import (
     is_allowed_first_revision,
+    is_revision_token,
     is_successor_revision,
     next_revision,
     normalize_revision_token,
@@ -47,6 +48,9 @@ class DocumentListLayout:
     project_status_maps: dict[str, dict[str, str]] = field(default_factory=dict)
     uploadable_statuses: list[str] = field(default_factory=list)
     construction_upgrade: dict[str, ConstructionUpgradeSpec] = field(default_factory=dict)
+    project_doc_ref_headers: dict[str, list[str]] = field(default_factory=dict)
+    project_title_headers: dict[str, list[str]] = field(default_factory=dict)
+    project_status_headers: dict[str, list[str]] = field(default_factory=dict)
     enabled: bool = True
 
 
@@ -79,6 +83,12 @@ def load_document_list_layout(raw: dict | None) -> DocumentListLayout:
     keys: dict[str, list[str]] = {}
     project_status: dict[str, dict[str, str]] = {}
     upgrades: dict[str, ConstructionUpgradeSpec] = {}
+    project_doc_ref: dict[str, list[str]] = {}
+    project_title: dict[str, list[str]] = {}
+    project_status_hdr: dict[str, list[str]] = {}
+    default_doc_ref = _string_list(headers.get("doc_ref"))
+    default_title = _string_list(headers.get("doc_title"))
+    default_status = _string_list(headers.get("status"))
     default_upgrade = _construction_upgrade_spec(
         data.get("construction_upgrade"),
         ConstructionUpgradeSpec(),
@@ -106,12 +116,21 @@ def load_document_list_layout(raw: dict | None) -> DocumentListLayout:
         )
         if upgrade is not None:
             upgrades[project] = upgrade
+        override = _merge_header_list(spec.get("doc_ref"), default_doc_ref)
+        if override:
+            project_doc_ref[project] = override
+        title_override = _merge_header_list(spec.get("doc_title"), default_title)
+        if title_override:
+            project_title[project] = title_override
+        status_override = _merge_header_list(spec.get("status"), default_status)
+        if status_override:
+            project_status_hdr[project] = status_override
     return DocumentListLayout(
         enabled=bool(data.get("enabled", True)),
-        doc_ref_headers=_string_list(headers.get("doc_ref")),
-        title_headers=_string_list(headers.get("doc_title")),
+        doc_ref_headers=default_doc_ref,
+        title_headers=default_title,
         revision_headers=_string_list(headers.get("revision")),
-        status_headers=_string_list(headers.get("status")),
+        status_headers=default_status,
         skip_name_contains=_string_list(data.get("skip_name_contains")),
         prefer_name_contains=_string_list(data.get("prefer_name_contains")),
         first_revisions=first,
@@ -121,6 +140,9 @@ def load_document_list_layout(raw: dict | None) -> DocumentListLayout:
         uploadable_statuses=_string_list(data.get("uploadable_statuses"))
         or ["Status A", "Status B", "Status C", "A", "B", "C"],
         construction_upgrade=upgrades,
+        project_doc_ref_headers=project_doc_ref,
+        project_title_headers=project_title,
+        project_status_headers=project_status_hdr,
     )
 
 
@@ -130,6 +152,64 @@ def _string_list(value: object) -> list[str]:
     if isinstance(value, str):
         return [value]
     return [str(item).strip() for item in value if str(item).strip()]
+
+
+def _merge_header_list(value: object, defaults: list[str]) -> list[str]:
+    """Project override first, then any default headers not already listed."""
+    listed = _string_list(value)
+    if not listed:
+        return []
+    extra = [item for item in defaults if item not in listed]
+    return listed + extra
+
+
+def _project_codes_for(
+    layout: DocumentListLayout,
+    path: Path | None = None,
+    project_codes: list[str] | None = None,
+) -> list[str]:
+    """Project codes from the listing filename (HP, BR, Tril…) or from the PDFs."""
+    codes: list[str] = []
+    if path is not None:
+        stem = path.stem.upper()
+        for code, keys in layout.search_keys.items():
+            if any(key.upper() in stem for key in keys):
+                codes.append(code)
+    if not codes:
+        codes = [str(code).strip().upper() for code in (project_codes or []) if str(code).strip()]
+    return codes
+
+
+def _headers_for(
+    layout: DocumentListLayout,
+    kind: str,
+    path: Path | None = None,
+    project_codes: list[str] | None = None,
+) -> list[str]:
+    """Oval uses Original Doc Ref; Trillium/WCR use Name; Holloway uses Title; Asite uses Status."""
+    defaults = {
+        "doc_ref": layout.doc_ref_headers,
+        "doc_title": layout.title_headers,
+        "status": layout.status_headers,
+    }[kind]
+    overrides = {
+        "doc_ref": layout.project_doc_ref_headers,
+        "doc_title": layout.project_title_headers,
+        "status": layout.project_status_headers,
+    }[kind]
+    for code in _project_codes_for(layout, path, project_codes):
+        override = overrides.get(code)
+        if override:
+            return override
+    return list(defaults)
+
+
+def _doc_ref_headers_for(
+    layout: DocumentListLayout,
+    path: Path | None = None,
+    project_codes: list[str] | None = None,
+) -> list[str]:
+    return _headers_for(layout, "doc_ref", path, project_codes)
 
 
 def _status_key(value: str) -> str:
@@ -206,7 +286,9 @@ def find_document_list(
         return None
     scored: list[tuple[int, int, float, Path]] = []
     for path in candidates:
-        mapping, _header_row, rows = _read_table(path, layout)
+        mapping, _header_row, rows = _read_table(
+            path, layout, project_codes=project_codes
+        )
         if mapping is None or not rows:
             continue
         prefer = _prefer_score(path, layout)
@@ -236,17 +318,146 @@ def _header_index(headers: list[str], wanted: list[str]) -> int | None:
     return None
 
 
-def _map_headers(headers: list[str], layout: DocumentListLayout) -> dict[str, int] | None:
-    doc_ref = _header_index(headers, layout.doc_ref_headers)
-    revision = _header_index(headers, layout.revision_headers)
+def _looks_like_doc_ref(value: str) -> bool:
+    return bool(canonical_doc_ref(_doc_ref_from_cell(value)))
+
+
+def _looks_like_revision(value: str) -> bool:
+    if not value:
+        return False
+    token = normalize_revision_token(value)
+    return bool(parse_pc_revision(token) or is_revision_token(token))
+
+
+_ENGINE_STATUSES = frozenset({"running", "completed", "not started", "pending"})
+_PLACEHOLDER_STATUSES = frozenset({"", "---", "-", "n/a", "na", "none"})
+_CANONICAL_STATUSES = frozenset(
+    {"under review", "qa rejected", "for information", "qa approved"}
+)
+
+
+def _looks_like_portal_status(
+    value: str,
+    layout: DocumentListLayout,
+    project_codes: list[str] | None = None,
+) -> bool:
+    """True for A/B/C workflow text; false for Asite engine RUNNING/COMPLETED."""
+    text = value.strip()
+    if _status_key(text) in _PLACEHOLDER_STATUSES or _status_key(text) in _ENGINE_STATUSES:
+        return False
+    codes: list[str | None] = [
+        str(code).strip().upper()
+        for code in (project_codes or [])
+        if str(code).strip()
+    ]
+    if codes:
+        codes = [*codes, None]
+    else:
+        codes = [None]
+    for project in codes:
+        if status_letter(text, layout, project):
+            return True
+        mapped = map_portal_status(text, layout, project)
+        if not mapped:
+            continue
+        if _status_key(mapped) != _status_key(text):
+            return True
+        if _status_key(mapped) in _CANONICAL_STATUSES:
+            return True
+        if status_allows_upload(text, layout, project):
+            return True
+    return False
+
+
+def _column_hit_count(
+    rows: list[list[object]],
+    header_row: int,
+    column: int,
+    predicate,
+    *,
+    sample: int = 80,
+) -> int:
+    hits = 0
+    for row in rows[header_row + 1 : header_row + 1 + sample]:
+        if column >= len(row):
+            continue
+        if predicate(_cell_text(row[column])):
+            hits += 1
+    return hits
+
+
+def _best_header_index(
+    headers: list[str],
+    wanted: list[str],
+    rows: list[list[object]],
+    header_row: int,
+    predicate,
+) -> int | None:
+    """Prefer the candidate column that actually contains values of the right kind.
+
+    4Projects always has Original Doc Ref (Non-Standard). Oval stores the ISO
+    number there. Trillium and WCR store it in Name; the original-ref column
+    is blank, so the project's header order tries Name first.
+    """
+    lookup = {_norm_header(item): index for index, item in enumerate(headers)}
+    first_existing: int | None = None
+    best: tuple[int, int, int] | None = None
+    for rank, name in enumerate(wanted):
+        column = lookup.get(_norm_header(name))
+        if column is None:
+            continue
+        if first_existing is None:
+            first_existing = column
+        hits = _column_hit_count(rows, header_row, column, predicate)
+        candidate = (hits, -rank, column)
+        if best is None or candidate[:2] > best[:2]:
+            best = candidate
+    if best is not None and best[0] > 0:
+        return best[2]
+    return first_existing
+
+
+def _map_headers(
+    headers: list[str],
+    layout: DocumentListLayout,
+    rows: list[list[object]] | None = None,
+    header_row: int = 0,
+    *,
+    doc_ref_headers: list[str] | None = None,
+    title_headers: list[str] | None = None,
+    status_headers: list[str] | None = None,
+    project_codes: list[str] | None = None,
+) -> dict[str, int] | None:
+    ref_headers = doc_ref_headers or layout.doc_ref_headers
+    title_names = title_headers or layout.title_headers
+    status_names = status_headers or layout.status_headers
+    if rows:
+        doc_ref = _best_header_index(
+            headers, ref_headers, rows, header_row, _looks_like_doc_ref
+        )
+        revision = _best_header_index(
+            headers, layout.revision_headers, rows, header_row, _looks_like_revision
+        )
+    else:
+        doc_ref = _header_index(headers, ref_headers)
+        revision = _header_index(headers, layout.revision_headers)
     if doc_ref is None or revision is None:
         return None
     mapping = {"doc_ref": doc_ref, "revision": revision}
-    title = _header_index(headers, layout.title_headers)
+    title = _header_index(headers, title_names)
     if title is not None:
         mapping["title"] = title
-    if layout.status_headers:
-        status = _header_index(headers, layout.status_headers)
+    if status_names:
+        if rows:
+            status = _best_header_index(
+                headers,
+                status_names,
+                rows,
+                header_row,
+                lambda value: _looks_like_portal_status(value, layout, project_codes),
+            )
+        else:
+            status = _header_index(headers, status_names)
         if status is not None:
             mapping["status"] = status
     return mapping
@@ -294,22 +505,43 @@ def _read_excel_rows(path: Path) -> list[list[object]]:
 
 
 def _read_table(
-    path: Path, layout: DocumentListLayout
+    path: Path,
+    layout: DocumentListLayout,
+    *,
+    project_codes: list[str] | None = None,
 ) -> tuple[dict[str, int] | None, int, list[list[object]]]:
     try:
         rows = _read_csv_rows(path) if path.suffix.lower() == ".csv" else _read_excel_rows(path)
     except Exception:  # noqa: BLE001 - optional check must not abort the folder scan
         return None, 0, []
+    codes = _project_codes_for(layout, path, project_codes)
+    ref_headers = _headers_for(layout, "doc_ref", path, project_codes)
+    title_headers = _headers_for(layout, "doc_title", path, project_codes)
+    status_headers = _headers_for(layout, "status", path, project_codes)
     for index, row in enumerate(rows[:_HEADER_SCAN_ROWS]):
         headers = [_cell_text(item) for item in row]
-        mapping = _map_headers(headers, layout)
+        mapping = _map_headers(
+            headers,
+            layout,
+            rows,
+            index,
+            doc_ref_headers=ref_headers,
+            title_headers=title_headers,
+            status_headers=status_headers,
+            project_codes=codes,
+        )
         if mapping:
             return mapping, index, rows
     return None, 0, []
 
 
-def load_document_list(path: Path, layout: DocumentListLayout) -> DocumentListIndex:
-    mapping, header_row, rows = _read_table(path, layout)
+def load_document_list(
+    path: Path,
+    layout: DocumentListLayout,
+    *,
+    project_codes: list[str] | None = None,
+) -> DocumentListIndex:
+    mapping, header_row, rows = _read_table(path, layout, project_codes=project_codes)
     index = DocumentListIndex(path=path, has_status="status" in (mapping or {}))
     if mapping is None:
         return index
@@ -327,6 +559,8 @@ def load_document_list(path: Path, layout: DocumentListLayout) -> DocumentListIn
             status = _cell_text(row[mapping["status"]])
         doc_ref = canonical_doc_ref(_doc_ref_from_cell(raw_ref))
         if not doc_ref or not revision:
+            continue
+        if not parse_pc_revision(revision) and not is_revision_token(revision):
             continue
         incoming = PortalDocument(doc_ref=doc_ref, revision=revision, title=title, status=status)
         existing = index.by_ref.get(doc_ref)

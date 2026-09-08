@@ -123,6 +123,114 @@ def test_load_4projects_headers(tmp_path: Path):
     assert row.title == "Plant"
 
 
+def test_oval_prefers_original_doc_ref_when_name_also_has_a_number(tmp_path: Path):
+    """Oval C+D 4Projects: Name can look like a doc ref; the real number is Original Doc Ref."""
+    wb = Workbook()
+    ws = wb.active
+    ws.append(
+        [
+            "Name",
+            "Description",
+            "Revision",
+            "Original Doc Ref (Non-Standard)",
+            "Revision Workflow",
+        ]
+    )
+    ws.append(
+        [
+            "R459-MBS-DZ-ZZ-DR-W-99999",
+            "Plant",
+            "P01",
+            "R459-MBS-DZ-ZZ-DR-W-0001",
+            "Under Review",
+        ]
+    )
+    path = tmp_path / "OVCD Document Listing.xlsx"
+    wb.save(path)
+    index = load_document_list(path, _layout())
+    assert index.get("R459-MBS-DZ-ZZ-DR-W-0001") is not None
+    assert index.get("R459-MBS-DZ-ZZ-DR-W-99999") is None
+
+
+def _write_4projects_name_listing(
+    path: Path, doc_ref: str, title: str, revision: str = "P01"
+) -> Path:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Items"
+    ws.append(
+        [
+            "Name",
+            "Description",
+            "Revision",
+            "Original Doc Ref (Non-Standard)",
+            "Revision Workflow",
+            "Status",
+        ]
+    )
+    ws.append([doc_ref, title, revision, "", "Under Review", "S3 - For Review & Comment"])
+    path.parent.mkdir(parents=True, exist_ok=True)
+    wb.save(path)
+    return path
+
+
+def test_uses_name_when_original_doc_ref_column_is_blank(tmp_path: Path):
+    """Trillium 4Projects dumps leave Original Doc Ref empty; ISO numbers are in Name."""
+    path = _write_4projects_name_listing(
+        tmp_path / "Tril Document Listing 080926.xlsx",
+        "R456-MAL20-BI-ZZ-DR-W-605-001",
+        "Block I - Combined Services - Apt Type I.01a,b,c,d",
+    )
+    index = load_document_list(path, _layout())
+    row = index.get("R456-MAL20-BI-ZZ-DR-W-605-001")
+    assert row is not None
+    assert row.revision == "P01"
+    assert row.title.startswith("Block I - Combined Services")
+    assert row.status == "Under Review"
+
+    result = check_document_list(
+        [
+            _drawing(
+                project="R456",
+                number="605-001",
+                revision="P01",
+                title="Block I - Combined Services - Apt Type I.01a,b,c,d",
+                doc_ref="R456-MAL20-BI-ZZ-DR-W-605-001",
+            )
+        ],
+        index,
+        _layout(),
+    )[0]
+    finalize_status(result)
+    assert result.portal_revision == "P01"
+    assert CheckStatus.PORTAL_REVISION in result.issues
+
+
+def test_wcr_uses_name_column_like_trillium(tmp_path: Path):
+    path = _write_4projects_name_listing(
+        tmp_path / "WCR Document Listing.xlsx",
+        "WCR-MBS-B7-ZZ-DR-E-6105",
+        "Apartment Type B7-2C DUP",
+        "C04",
+    )
+    index = load_document_list(path, _layout())
+    row = index.get("WCR-MBS-B7-ZZ-DR-E-6105")
+    assert row is not None
+    assert row.revision == "C04"
+
+
+def test_name_column_mapping_follows_pdf_project_when_listing_name_is_generic(
+    tmp_path: Path,
+):
+    path = _write_4projects_name_listing(
+        tmp_path / "Document Listing.xlsx",
+        "R456-MAL20-BI-ZZ-DR-W-605-001",
+        "Combined Services",
+    )
+    index = load_document_list(path, _layout(), project_codes=["R456"])
+    assert index.get("R456-MAL20-BI-ZZ-DR-W-605-001") is not None
+
+
 def test_strips_leading_and_trailing_dots_from_portal_revision(tmp_path: Path):
     path = _write_excel(
         tmp_path / "WCR Listing.xlsx",
@@ -169,6 +277,93 @@ def test_load_dochosting_csv(tmp_path: Path):
     assert row is not None
     assert row.revision == "P01"
     assert row.title == "Lighting"
+
+
+def test_holloway_uses_title_and_description_not_subject(tmp_path: Path):
+    """DocHosting HP dump: Title is the ISO number, Description is the drawing title."""
+    path = tmp_path / "HP Document Listing 070926.csv"
+    path.write_text(
+        "Report Created,Project Folder,Title,Subject,Description,Status,Rev,Date\n"
+        "06-09-2026,/ACAD_Services,HPA-MBS-C1-ZZ-SM-X-52007,Schematics,"
+        "Block C1 LTHW M-BUS schematic,Construction,C1,13-Aug-25\n",
+        encoding="utf-8",
+    )
+    index = load_document_list(path, _layout())
+    row = index.get("HPA-MBS-C1-ZZ-SM-X-52007")
+    assert row is not None
+    assert row.revision == "C1"
+    assert row.title == "Block C1 LTHW M-BUS schematic"
+    assert row.status == "Construction"
+    from drawing_qa.document_list import status_allows_upload
+
+    assert status_allows_upload(row.status, _layout(), "HPA")
+
+
+def test_barking_uses_asite_status_not_workflow_status(tmp_path: Path):
+    """Asite listings have Status (For Status Change) and Workflow Status (RUNNING)."""
+    wb = Workbook()
+    ws = wb.active
+    for _ in range(6):
+        ws.append(["ignore"])
+    ws.append(["Status", "Type", "Doc Ref", "Doc Title", "Rev", "Workflow Status"])
+    ws.append(
+        [
+            "For Status Change",
+            "pdf",
+            "J106309-MBS-ZZ-ZZ-DR-X-580010",
+            "26SSD PT8 STRUCTURAL OPENING",
+            "P01",
+            "RUNNING",
+        ]
+    )
+    ws.append(
+        [
+            "B - Partial Sign Off (with comment)",
+            "pdf",
+            "J106309-MBS-ZZ-ZZ-DR-X-620301",
+            "EXTERNAL COMBINED SERVICES LAYOUT",
+            "P05",
+            "COMPLETED",
+        ]
+    )
+    path = tmp_path / "BR Document Listing 070926.xlsx"
+    wb.save(path)
+    index = load_document_list(path, _layout())
+    blocked = index.get("J106309-MBS-ZZ-ZZ-DR-X-580010")
+    allowed = index.get("J106309-MBS-ZZ-ZZ-DR-X-620301")
+    assert blocked is not None
+    assert blocked.revision == "P01"
+    assert blocked.title == "26SSD PT8 STRUCTURAL OPENING"
+    assert blocked.status == "For Status Change"
+    assert allowed is not None
+    assert allowed.status == "B - Partial Sign Off (with comment)"
+    from drawing_qa.document_list import status_allows_upload
+
+    layout = _layout()
+    assert not status_allows_upload(blocked.status, layout, "J106309")
+    assert status_allows_upload(allowed.status, layout, "J106309")
+
+
+def test_skips_asite_comments_report(tmp_path: Path):
+    layout = _layout()
+    comments = tmp_path / "BR Comments Report 070926.xlsx"
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["Comments Report"])
+    ws.append([])
+    ws.append(["Doc Ref", "Document Title", "Rev"])
+    ws.append(["J106309-MBS-ZZ-00-DR-M-0001", "Basement", "P99"])
+    wb.save(comments)
+    listing = _write_excel(
+        tmp_path / "BR Document Listing 070926.xlsx",
+        [("J106309-MBS-ZZ-00-DR-M-0001", "Basement", "P03")],
+        headers=["Doc Ref", "Doc Title", "Rev"],
+    )
+    assert find_document_list(tmp_path, layout) == listing
+    only_comments = tmp_path / "comments_only"
+    only_comments.mkdir()
+    comments.replace(only_comments / comments.name)
+    assert find_document_list(only_comments, layout) is None
 
 
 def test_keeps_highest_portal_revision(tmp_path: Path):
