@@ -50,12 +50,14 @@ def test_parse_check_choice_accepts_numbers_and_alias():
 
     assert parse_check_choice("9") == ["portal-revision"]
     assert parse_check_choice("9,10") == ["portal-revision", "portal-title"]
+    assert parse_check_choice("12") == ["schematic-type"]
     assert parse_check_choice("portal") == ["portal-revision", "portal-title"]
 
 
 def test_list_checks_mentions_portal_revision():
     text = format_check_list()
     assert "portal-revision" in text
+    assert "schematic-type" in text
     assert "--disable portal-revision" in text
     assert "previews" in text
     assert "--enable previews" in text
@@ -71,5 +73,26 @@ def test_enable_previews_is_a_report_option_not_a_qa_check():
 def test_parse_check_choice_accepts_previews_number():
     from drawing_qa.checks import parse_check_choice
 
-    assert parse_check_choice("13") == ["previews"]
+    assert parse_check_choice("13") == ["filename-parse"]
+    assert parse_check_choice("14") == ["previews"]
     assert parse_check_choice("previews") == ["previews"]
+    assert parse_check_choice("schematic-type") == ["schematic-type"]
+
+
+def test_menu_shows_schematic_type_and_updated_on_off_state():
+    from drawing_qa.checks import CheckOptions, apply_check_toggles, format_check_menu
+
+    menu = format_check_menu()
+    assert "schematic-type" in menu
+    schematic_line = next(line for line in menu.splitlines() if "schematic-type" in line)
+    assert "[ON ]" in schematic_line
+
+    updated = apply_check_toggles(CheckOptions(), ["schematic-type", "previews"])
+    assert not updated.allows("schematic-type")
+    assert updated.field_previews is True
+    after = format_check_menu(updated)
+    schematic_after = next(line for line in after.splitlines() if "schematic-type" in line)
+    previews_after = next(line for line in after.splitlines() if "previews" in line)
+    assert "[OFF]" in schematic_after
+    assert "[ON ]" in previews_after
+    assert "current state" in after.lower()

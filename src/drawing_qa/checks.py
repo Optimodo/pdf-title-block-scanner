@@ -75,6 +75,11 @@ QA_CHECKS: tuple[QaCheck, ...] = (
         "Title-block client name is missing or not on the project list",
     ),
     QaCheck(
+        "schematic-type",
+        CheckStatus.SCHEMATIC_TYPE,
+        "Title contains schematic but the ISO type code is not the project schematic code",
+    ),
+    QaCheck(
         "filename-parse",
         CheckStatus.FILENAME_PARSE_ERROR,
         "Filename is not ISO 19650",
@@ -197,8 +202,25 @@ def resolve_check_options(
     return CheckOptions(enabled=frozenset(enabled), field_previews=field_previews)
 
 
+def apply_check_toggles(options: CheckOptions, names: list[str]) -> CheckOptions:
+    """Flip the named checks / report options (same as typing those numbers)."""
+    enabled = set(options.enabled)
+    field_previews = options.field_previews
+    for name in names:
+        if name == "previews":
+            field_previews = not field_previews
+            continue
+        if name in REPORT_TOGGLE_IDS:
+            continue
+        if name in enabled:
+            enabled.discard(name)
+        else:
+            enabled.add(name)
+    return CheckOptions(frozenset(enabled), field_previews=field_previews)
+
+
 def parse_check_choice(raw: str) -> list[str]:
-    """Resolve typed menu input: numbers (1-12), ids, and aliases."""
+    """Resolve typed menu input: numbers, ids, and aliases."""
     tokens: list[str] = []
     for part in raw.replace(";", ",").replace(",", " ").split():
         token = _normalize_token(part)
@@ -238,7 +260,7 @@ def format_check_menu(options: CheckOptions | None = None) -> str:
         lines.append(f"  {index:2}. [{mark}] {toggle_id.ljust(width)}  {summary}")
     lines.append("")
     lines.append("Type a number, name, or alias (portal, all, previews) to turn an item off or on.")
-    lines.append("Press Enter with nothing typed to start the scan.")
+    lines.append("The list above is the current state. Press Enter with nothing typed to start the scan.")
     lines.append(_ALWAYS_ON)
     return "\n".join(lines)
 

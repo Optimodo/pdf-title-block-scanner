@@ -9,6 +9,7 @@ from drawing_qa.checker import check_paths, iter_pdfs
 from drawing_qa.checks import (
     CheckOptions,
     UnknownCheckError,
+    apply_check_toggles,
     format_check_list,
     format_check_menu,
     parse_check_choice,
@@ -409,42 +410,59 @@ def _should_prompt_checks(args: argparse.Namespace) -> bool:
     return True
 
 
+def _toggle_change_lines(before: CheckOptions, after: CheckOptions, names: list[str]) -> list[str]:
+    """Short ON/OFF lines for the checks the user just typed."""
+    seen: list[str] = []
+    for name in names:
+        if name not in seen:
+            seen.append(name)
+    turned_off: list[str] = []
+    turned_on: list[str] = []
+    for name in seen:
+        if name == "previews":
+            if before.field_previews and not after.field_previews:
+                turned_off.append(name)
+            elif not before.field_previews and after.field_previews:
+                turned_on.append(name)
+            continue
+        if before.allows(name) and not after.allows(name):
+            turned_off.append(name)
+        elif not before.allows(name) and after.allows(name):
+            turned_on.append(name)
+    lines: list[str] = []
+    if turned_off:
+        lines.append("Turned OFF: " + ", ".join(turned_off))
+    if turned_on:
+        lines.append("Turned ON:  " + ", ".join(turned_on))
+    return lines
+
+
 def _prompt_check_toggles(initial: CheckOptions | None = None) -> CheckOptions:
     start = initial or CheckOptions()
-    enabled = set(start.enabled)
-    field_previews = start.field_previews
-    current = CheckOptions(frozenset(enabled), field_previews=field_previews)
+    current = CheckOptions(frozenset(start.enabled), field_previews=start.field_previews)
     print()
     print(format_check_menu(current))
     print()
     while True:
         try:
-            raw = input("Toggle (Enter to run): ").strip()
+            raw = input("Toggle (Enter to run with the settings above): ").strip()
         except EOFError:
             raw = ""
         if not raw:
-            return CheckOptions(frozenset(enabled), field_previews=field_previews)
+            return current
         try:
             names = parse_check_choice(raw)
         except UnknownCheckError as exc:
             print(f"  {exc}")
             continue
-        for name in names:
-            if name == "previews":
-                field_previews = not field_previews
-                continue
-            if name in enabled:
-                enabled.discard(name)
-            else:
-                enabled.add(name)
-        current = CheckOptions(frozenset(enabled), field_previews=field_previews)
-        disabled = current.disabled_ids()
-        extras = []
-        if current.field_previews:
-            extras.append("previews on")
-        print("  Off: " + (", ".join(disabled) if disabled else "(none)"))
-        if extras:
-            print("  " + ", ".join(extras))
+        updated = apply_check_toggles(current, names)
+        print()
+        for line in _toggle_change_lines(current, updated, names):
+            print("  " + line)
+        current = updated
+        print()
+        print(format_check_menu(current))
+        print()
 
 
 def _check_options_from_args(args: argparse.Namespace) -> CheckOptions:

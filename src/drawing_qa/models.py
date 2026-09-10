@@ -21,6 +21,7 @@ class CheckStatus(StrEnum):
     PORTAL_REVISION = "PORTAL_REVISION"
     PORTAL_TITLE = "PORTAL_TITLE"
     CLIENT_ERROR = "CLIENT_ERROR"
+    SCHEMATIC_TYPE = "SCHEMATIC_TYPE"
     FILENAME_PARSE_ERROR = "FILENAME_PARSE_ERROR"
     ERROR = "ERROR"
     MULTIPLE_ISSUES = "MULTIPLE_ISSUES"
@@ -267,6 +268,8 @@ class DocumentResult:
     proposed_upload_revision: str | None = None
     construction_upgrade_required: bool = False
     allowed_clients: list[str] = field(default_factory=list)
+    schematic_type_expected: str | None = None
+    schematic_type_got: str | None = None
 
     def mismatch_field_labels(self) -> list[str]:
         """Human names of filename vs title-block fields that disagreed."""

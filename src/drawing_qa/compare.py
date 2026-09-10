@@ -8,7 +8,12 @@ from drawing_qa.client import (
     client_whitelist_note,
 )
 from drawing_qa.checks import CheckOptions
-from drawing_qa.config_loader import ClientCheckConfig, SpellCheckConfig, SuitabilityCheckConfig
+from drawing_qa.config_loader import (
+    ClientCheckConfig,
+    DocumentTypeCheckConfig,
+    SpellCheckConfig,
+    SuitabilityCheckConfig,
+)
 from drawing_qa.models import (
     CheckStatus,
     Confidence,
@@ -29,6 +34,13 @@ from drawing_qa.suitability import (
 )
 from drawing_qa.timing import span as timing_span
 from drawing_qa.docref import canonical_doc_ref
+from drawing_qa.document_type import (
+    document_type_from_result,
+    drawing_title_from_result,
+    schematic_type_for_project,
+    schematic_type_note,
+    title_looks_like_schematic,
+)
 from drawing_qa.history import history_first_row
 from drawing_qa.tokens import dates_equal, suitability_code
 
@@ -368,6 +380,7 @@ def build_result(
     suitability_check_config: SuitabilityCheckConfig | None = None,
     client_check_config: ClientCheckConfig | None = None,
     check_options: CheckOptions | None = None,
+    document_type_config: DocumentTypeCheckConfig | None = None,
 ) -> DocumentResult:
     allowed: list[str] = []
     accept_code_only = True
@@ -487,6 +500,24 @@ def build_result(
             )
             if client_check_config.fail_on_error:
                 record_issue(result, CheckStatus.CLIENT_ERROR)
+
+    if (
+        options.allows("schematic-type")
+        and document_type_config
+        and document_type_config.enabled
+        and CheckStatus.UNDETECTED not in result.issues
+        and result.status != CheckStatus.UNDETECTED
+    ):
+        project = result.filename.parts.get("project")
+        expected = schematic_type_for_project(project, document_type_config.schematic_types)
+        title = drawing_title_from_result(result)
+        got = document_type_from_result(result)
+        if expected and title_looks_like_schematic(title) and got and got != expected:
+            result.schematic_type_expected = expected
+            result.schematic_type_got = got
+            result.notes.append(schematic_type_note(got, expected))
+            if document_type_config.fail_on_error:
+                record_issue(result, CheckStatus.SCHEMATIC_TYPE)
 
     finalize_status(result)
     return result

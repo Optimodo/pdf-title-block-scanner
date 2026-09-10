@@ -31,6 +31,14 @@ class ClientCheckConfig:
 
 
 @dataclass
+class DocumentTypeCheckConfig:
+    enabled: bool = True
+    fail_on_error: bool = True
+    schematic_types: dict[str, str] = field(default_factory=dict)
+    project_names: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
 class SuitabilityCheckConfig:
     enabled: bool = True
     fail_on_error: bool = True
@@ -68,6 +76,7 @@ class AppConfig:
     spell_check: SpellCheckConfig | None = None
     suitability_check: SuitabilityCheckConfig | None = None
     client_check: ClientCheckConfig | None = None
+    document_type_check: DocumentTypeCheckConfig | None = None
     preview: PreviewConfig | None = None
     document_list: DocumentListConfig | None = None
     check_options: CheckOptions = field(default_factory=CheckOptions)
@@ -156,6 +165,33 @@ def _project_suitability_lists(raw: dict) -> tuple[dict[str, list[str]], dict[st
             if name:
                 names[code] = name
     return projects, names
+
+
+def _project_schematic_types(raw: dict) -> tuple[dict[str, str], dict[str, str]]:
+    """Map ISO project codes to the type field required for schematic titles."""
+    block = raw.get("projects") or {}
+    if not isinstance(block, dict):
+        return {}, {}
+    types: dict[str, str] = {}
+    names: dict[str, str] = {}
+    for key, spec in block.items():
+        code = str(key).strip().upper()
+        if not code:
+            continue
+        name = ""
+        schematic = ""
+        if isinstance(spec, dict):
+            name = str(spec.get("name") or "").strip()
+            schematic = str(spec.get("schematic") or spec.get("schematic_type") or "").strip()
+        elif isinstance(spec, str):
+            schematic = spec.strip()
+        else:
+            continue
+        if schematic:
+            types[code] = schematic.upper()
+            if name:
+                names[code] = name
+    return types, names
 
 
 def load_config(config_dir: Path | None = None) -> AppConfig:
@@ -258,6 +294,22 @@ def load_config(config_dir: Path | None = None) -> AppConfig:
         project_names=client_names,
     )
 
+    types_path = config_dir / "document_types.yaml"
+    if not types_path.is_file():
+        bundled_types = bundled_config_dir() / "document_types.yaml"
+        if bundled_types.is_file():
+            types_path = bundled_types
+    types_raw: dict = {}
+    if types_path.is_file():
+        types_raw = yaml.safe_load(types_path.read_text(encoding="utf-8")) or {}
+    schematic_types, type_names = _project_schematic_types(types_raw)
+    document_type_check = DocumentTypeCheckConfig(
+        enabled=bool(types_raw.get("enabled", True)),
+        fail_on_error=bool(types_raw.get("fail_on_error", True)),
+        schematic_types=schematic_types,
+        project_names=type_names,
+    )
+
     timing_cfg = settings.get("timing") or {}
     configure_timing(bool(timing_cfg.get("enabled", False)))
 
@@ -291,6 +343,7 @@ def load_config(config_dir: Path | None = None) -> AppConfig:
         spell_check=spell_check,
         suitability_check=suitability_check,
         client_check=client_check,
+        document_type_check=document_type_check,
         preview=preview,
         document_list=document_list,
     )

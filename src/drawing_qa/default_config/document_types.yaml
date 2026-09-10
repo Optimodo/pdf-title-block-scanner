@@ -1,0 +1,28 @@
+# ISO 19650 document type (5th field) when the title contains "schematic".
+#
+# Project-Originator-Volume-Level-Type-Role-Number
+# Example: J106309-MBS-ZZ-ZZ-DR-X-620301  →  type is DR
+#
+# Copy this file into a config\ folder next to QA-TB-Checker.exe to override.
+# Projects with no entry are not checked. Layouts and other drawings keep
+# their usual type (often DR) unless the title has schematic / schematics.
+
+enabled: true
+fail_on_error: true
+
+projects:
+  R459:
+    name: Oval C+D
+    schematic: DR
+  R456:
+    name: Trillium
+    schematic: SH
+  HPA:
+    name: Holloway Park
+    schematic: SM
+  WCR:
+    name: West Cromwell Road
+    schematic: SC
+  J106309:
+    name: Barking Riverside
+    schematic: SC

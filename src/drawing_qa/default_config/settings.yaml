@@ -23,6 +23,7 @@ spell_check:
 
 # Purpose-of-issue / suitability whitelist and P vs C pairing: see suitability.yaml.
 # Title-block client name per project: see clients.yaml.
+# Schematic ISO type codes (5th field) per project: see document_types.yaml.
 
 # Temporary scan timings printed at the end of a run. Set false (or TBCHECK_TIMING=0)
 # once optimisation is done — this module is designed to be removed later.

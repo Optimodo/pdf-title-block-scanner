@@ -54,7 +54,7 @@ QA-TB-Custom-Checker-v1.0.exe --list-checks
 
 `--disable` / `--enable` / `--checks` also work on `drawing-qa check` and the other exes. Extraction failures (UNDETECTED, INCOMPLETE, ERROR) cannot be turned off.
 
-Optional: copy a `config\` folder next to the exe to override bundled title-block layouts, the purpose-of-issue whitelist (`suitability.yaml`), title-block client names (`clients.yaml`), and portal document-list column names (`document_lists.yaml`). If that folder is missing, the exe uses the files baked into it.
+Optional: copy a `config\` folder next to the exe to override bundled title-block layouts, the purpose-of-issue whitelist (`suitability.yaml`), title-block client names (`clients.yaml`), schematic type codes (`document_types.yaml`), and portal document-list column names (`document_lists.yaml`). If that folder is missing, the exe uses the files baked into it.
 
 The exe looks at PDFs in **that folder**, not subfolders (unless `--recursive` is specified). It does not use the network.
 
@@ -169,6 +169,7 @@ Each data row is medium height and includes a **preview strip**: five tight crop
 | `PORTAL_REVISION` | Revision is not the next issue after the portal document list (or not a valid first issue if the drawing is new) |
 | `PORTAL_TITLE` | Title disagrees with the portal document list |
 | `CLIENT_ERROR` | Title-block client name is missing or not on the project list (`clients.yaml`) |
+| `SCHEMATIC_TYPE` | Title contains schematic, but the ISO type (5th field) is not the project code in `document_types.yaml` |
 | `ERROR` | PDF could not be read |
 | `MULTIPLE_ISSUES` | More than one issue; column A lists them all |
 

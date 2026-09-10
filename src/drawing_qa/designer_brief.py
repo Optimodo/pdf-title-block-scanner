@@ -289,6 +289,8 @@ def _issue_actions(
         return [_portal_title_action(result)]
     if status == CheckStatus.CLIENT_ERROR:
         return [_client_action(result)]
+    if status == CheckStatus.SCHEMATIC_TYPE:
+        return [_schematic_type_action(result)]
     if status == CheckStatus.ERROR:
         return ["This PDF could not be opened. Re-export the drawing."]
     return []
@@ -368,6 +370,25 @@ def _client_action(result: DocumentResult) -> str:
         return f"Add the client name to the title block. For this project it should be {expected}."
     return (
         f"Change the client name in the title block from {_quote(current)} to {expected}."
+    )
+
+
+def _schematic_type_action(result: DocumentResult) -> str:
+    expected = (result.schematic_type_expected or "").strip().upper()
+    got = (result.schematic_type_got or "").strip().upper()
+    if expected and got:
+        return (
+            f"The title contains schematic, so the document type (5th part of the drawing number) "
+            f"should be {expected}, not {got}."
+        )
+    if expected:
+        return (
+            f"The title contains schematic, so the document type (5th part of the drawing number) "
+            f"should be {expected}."
+        )
+    return (
+        "The title contains schematic, so the document type (5th part of the drawing number) "
+        "must use this project's schematic code."
     )
 
 

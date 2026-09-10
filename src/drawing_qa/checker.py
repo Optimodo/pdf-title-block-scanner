@@ -81,6 +81,7 @@ def check_pdf(path: Path, config: AppConfig) -> DocumentResult:
                     config.suitability_check,
                     config.client_check,
                     check_options=config.check_options,
+                    document_type_config=config.document_type_check,
                 )
             if _want_all_previews(config) or result.status != CheckStatus.MATCH:
                 with timing_span("preview"):
