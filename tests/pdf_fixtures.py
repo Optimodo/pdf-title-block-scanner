@@ -210,6 +210,10 @@ def write_mbs_right_pdf(
     client: str = "Berkeley",
     history: list[tuple[str, str, str]] | None = None,
     drawing_note: str | None = None,
+    title_heading: bool = True,
+    client_heading: bool = True,
+    client_contact_heading: bool = True,
+    split_revision_glyphs: bool = False,
 ) -> Path:
     """Landscape sheet with an MBS-style right-hand title block (visual coords)."""
     doc = pymupdf.open()
@@ -217,9 +221,16 @@ def write_mbs_right_pdf(
     page.insert_text((40, 40), "SPRINKLER LAYOUT", fontsize=18)
     # Amendments table (newest row above the column headers)
     rows = history or [(revision, date, f"{suitability} - Review & Comment")]
+    def _put_revision(x: float, y: float, text: str, size: float = 9) -> None:
+        if split_revision_glyphs and len(text) >= 3 and text[0] in "PCpc":
+            page.insert_text((x, y), text[:2], fontsize=size)
+            page.insert_text((x + 12, y), text[2:], fontsize=size)
+        else:
+            page.insert_text((x, y), text, fontsize=size)
+
     y = 1058
     for rev, when, desc in rows:
-        page.insert_text((1916, y), rev, fontsize=9)
+        _put_revision(1916, y, rev, 9)
         page.insert_text((1945, y), when, fontsize=9)
         page.insert_text((1990, y), desc, fontsize=9)
         y += 16
@@ -230,7 +241,8 @@ def write_mbs_right_pdf(
     page.insert_text((2077, 1118), "Amendments", fontsize=9)
     page.insert_text((1918, 1140), "Project", fontsize=8)
     page.insert_text((2011, 1170), "Oval Village Block D", fontsize=12)
-    page.insert_text((1918, 1196), "Title", fontsize=8)
+    if title_heading:
+        page.insert_text((1918, 1196), "Title", fontsize=8)
     title_y = 1240
     for line in title.split("\n"):
         page.insert_text((1923, title_y), line, fontsize=12)
@@ -238,11 +250,13 @@ def write_mbs_right_pdf(
     if drawing_note:
         # Sheet note in the 0.78 crop strip, left of the Client cell (logo / no text).
         page.insert_text((1880, 1325), drawing_note, fontsize=10)
-    page.insert_text((1918, 1296), "Client", fontsize=8)
+    if client_heading:
+        page.insert_text((1918, 1296), "Client", fontsize=8)
     if client:
         page.insert_text((2085, 1320), client, fontsize=10)
-    page.insert_text((1918, 1348), "Client Contact", fontsize=8)
-    page.insert_text((2085, 1372), "BERKELEY HOMES", fontsize=10)
+    if client_contact_heading:
+        page.insert_text((1918, 1348), "Client Contact", fontsize=8)
+        page.insert_text((2085, 1372), "BERKELEY HOMES", fontsize=10)
     page.insert_text((1914, 1446), "Suitability", fontsize=8)
     page.insert_text((2041, 1468), "REVIEW & COMMENT", fontsize=11)
     page.insert_text((2271, 1468), suitability, fontsize=12)
@@ -251,7 +265,11 @@ def write_mbs_right_pdf(
     page.insert_text((1918, 1592), "Number", fontsize=8)
     page.insert_text((1946, 1640), document_reference, fontsize=14)
     page.insert_text((2247, 1592), "Revision", fontsize=8)
-    page.insert_text((2246, 1640), revision, fontsize=18)
+    if split_revision_glyphs and len(revision) >= 3 and revision[0] in "PCpc":
+        page.insert_text((2246, 1640), revision[:2], fontsize=18)
+        page.insert_text((2268, 1640), revision[2:], fontsize=18)
+    else:
+        page.insert_text((2246, 1640), revision, fontsize=18)
     path.parent.mkdir(parents=True, exist_ok=True)
     doc.save(path)
     doc.close()

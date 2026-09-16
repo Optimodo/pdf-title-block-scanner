@@ -4,8 +4,9 @@ from pathlib import Path
 
 from drawing_qa.checks import CheckOptions
 from drawing_qa.compare import build_result
+from drawing_qa.client import allowed_clients_for_project
 from drawing_qa.config_loader import AppConfig
-from drawing_qa.detect import extract_titleblock
+from drawing_qa.detect import extract_titleblock, recover_unlabelled_fields
 from drawing_qa.document_list import (
     check_document_list,
     find_document_list,
@@ -71,6 +72,20 @@ def check_pdf(path: Path, config: AppConfig) -> DocumentResult:
                     page,
                     config.layouts,
                     config.min_layout_score,
+                )
+                project = filename.parts.get("project")
+                if not project and result.titleblock.document_reference:
+                    project = result.titleblock.document_reference.split("-")[0]
+                allowed_clients: list[str] = []
+                if config.client_check and config.client_check.enabled:
+                    allowed_clients = allowed_clients_for_project(
+                        project, config.client_check.projects
+                    )
+                recover_unlabelled_fields(
+                    page,
+                    config.layouts,
+                    result.titleblock,
+                    allowed_clients=allowed_clients or None,
                 )
             # Compare while the page is still open so previews can render.
             with timing_span("compare"):
@@ -141,6 +156,7 @@ def check_paths(
     on_pdf=None,
     document_list: Path | None = None,
     extra_dwgs: list[Path] | None = None,
+    list_folder: Path | None = None,
 ) -> list[DocumentResult]:
     results: list[DocumentResult] = []
     total = len(paths)
@@ -178,7 +194,7 @@ def check_paths(
                     }
                 )
                 list_path = find_document_list(
-                    folder,
+                    list_folder or folder,
                     list_cfg.layout,
                     explicit=document_list,
                     project_codes=project_codes,

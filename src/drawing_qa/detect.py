@@ -8,8 +8,11 @@ from drawing_qa.extract import (
     extract_near_label_words,
     extract_words,
     find_label,
+    line_text,
+    normalize_label,
     page_rect,
     words_outside,
+    words_to_lines,
 )
 from drawing_qa.history import detect_revision_history, history_search_region
 from drawing_qa.models import (
@@ -271,6 +274,120 @@ def _extract_layout_fields(page, layout: TitleBlockLayout, score: float) -> Titl
     if empty_optional:
         result.notes.append("Optional fields not found: " + ", ".join(empty_optional))
     return result
+
+
+_TITLE_STOP_HEADINGS = {
+    "SUITABILITY",
+    "STATUS",
+    "PURPOSE OF ISSUE",
+    "DESIGNED BY",
+    "DRAWN BY",
+    "CHECKED BY",
+    "NUMBER",
+    "REVISION",
+    "DATE",
+    "SCALE",
+    "SCALES",
+    "PROJECT NUMBER",
+    "CLIENT",
+    "CLIENT CONTACT",
+    "CLIENT NAME",
+}
+
+
+def recover_unlabelled_fields(
+    page,
+    layouts: list[TitleBlockLayout],
+    titleblock: TitleBlockFields,
+    *,
+    allowed_clients: list[str] | None = None,
+) -> TitleBlockFields:
+    """Fill client/title when the value is printed but the heading word is missing."""
+    layout = next((item for item in layouts if item.id == titleblock.layout_id), None)
+    if layout is None:
+        return titleblock
+    words = extract_words(page, layout.region)
+    if titleblock.history and titleblock.history.bbox:
+        words = words_outside(words, titleblock.history.bbox)
+    if not titleblock.client and allowed_clients:
+        found = _client_from_whitelist(words, allowed_clients)
+        if found:
+            titleblock.client = found
+            titleblock.fields["client"] = ExtractedField(
+                name="client", value=found, source="whitelist"
+            )
+            titleblock.notes.append(
+                "Client name taken from title-block text (no CLIENT heading)"
+            )
+    if not titleblock.title:
+        found = _title_below_project(words, allowed_clients)
+        if found:
+            titleblock.title = found
+            titleblock.fields["title"] = ExtractedField(
+                name="title", value=found, source="unlabelled"
+            )
+            titleblock.notes.append(
+                "Title taken from the title-block cell (no TITLE heading)"
+            )
+    return titleblock
+
+
+def _client_from_whitelist(words: list[Word], allowed: list[str]) -> str | None:
+    from drawing_qa.client import client_is_allowed, normalize_client
+
+    needles = sorted(
+        ((normalize_client(name), name) for name in allowed if normalize_client(name)),
+        key=lambda item: len(item[0]),
+        reverse=True,
+    )
+    if not needles:
+        return None
+    for line in words_to_lines(words):
+        text = line_text(line)
+        if client_is_allowed(text, allowed):
+            return text
+    blob = all_text(words)
+    hay = f" {normalize_client(blob)} "
+    for needle, name in needles:
+        if f" {needle} " in hay:
+            return name
+    return None
+
+
+def _title_below_project(
+    words: list[Word],
+    allowed_clients: list[str] | None,
+) -> str | None:
+    from drawing_qa.client import client_is_allowed
+
+    project = find_label(words, "PROJECT")
+    if not project:
+        return None
+    y_after = max(word.y1 for word in project)
+    collected: list[str] = []
+    skipped_project_name = False
+    for line in words_to_lines(words):
+        if min(word.y0 for word in line) < y_after - 2:
+            continue
+        text = line_text(line)
+        heading = normalize_label(text)
+        if heading in {"TITLE", "DRAWING TITLE", "PROJECT"}:
+            continue
+        if not skipped_project_name:
+            skipped_project_name = True
+            continue
+        if heading in _TITLE_STOP_HEADINGS or any(
+            heading.startswith(stop + " ") for stop in _TITLE_STOP_HEADINGS
+        ):
+            break
+        if allowed_clients and client_is_allowed(text, allowed_clients):
+            break
+        if text:
+            collected.append(text)
+        if len(collected) >= 4:
+            break
+    joined = " ".join(collected).strip()
+    return joined or None
 
 
 def region_debug_text(page, region: RectFrac) -> str:

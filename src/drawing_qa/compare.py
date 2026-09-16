@@ -60,6 +60,40 @@ def normalize_title(value: str | None) -> str | None:
     return cleaned or None
 
 
+def _stem_title_token(token: str) -> str:
+    """Treat Schematic/Schematics (and similar plurals) as the same word."""
+    if len(token) > 3 and token.endswith("S") and not token.endswith("SS"):
+        return token[:-1]
+    return token
+
+
+def titles_equivalent(left: str | None, right: str | None) -> bool:
+    """True when titles match after spacing, hyphens, and simple English plurals."""
+    a, b = normalize_title(left), normalize_title(right)
+    if a is None and b is None:
+        return True
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    return [_stem_title_token(t) for t in a.split()] == [
+        _stem_title_token(t) for t in b.split()
+    ]
+
+
+def _compare_title(left: str | None, right: str | None) -> tuple[bool | None, str]:
+    a, b = normalize_title(left), normalize_title(right)
+    if a is None and b is None:
+        return None, "both empty"
+    if a is None:
+        return None, "missing on left"
+    if b is None:
+        return None, "missing on right"
+    if titles_equivalent(left, right):
+        return True, "equal"
+    return False, f"{a} != {b}"
+
+
 def _compare_doc_ref(left: str | None, right: str | None) -> tuple[bool | None, str]:
     a, b = canonical_doc_ref(left), canonical_doc_ref(right)
     if a is None and b is None:
@@ -73,17 +107,6 @@ def _compare_doc_ref(left: str | None, right: str | None) -> tuple[bool | None, 
 
 def _compare_code(left: str | None, right: str | None) -> tuple[bool | None, str]:
     a, b = normalize_code(left), normalize_code(right)
-    if a is None and b is None:
-        return None, "both empty"
-    if a is None:
-        return None, "missing on left"
-    if b is None:
-        return None, "missing on right"
-    return a == b, "equal" if a == b else f"{a} != {b}"
-
-
-def _compare_title(left: str | None, right: str | None) -> tuple[bool | None, str]:
-    a, b = normalize_title(left), normalize_title(right)
     if a is None and b is None:
         return None, "both empty"
     if a is None:

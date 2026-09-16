@@ -46,6 +46,29 @@ def test_wcr_accepts_seven_capital_woodrow(tmp_path: Path, config_dir: Path):
     assert CheckStatus.CLIENT_ERROR not in result.issues
 
 
+def test_client_and_title_recovered_when_headings_are_missing(
+    tmp_path: Path, config_dir: Path
+):
+    from tests.pdf_fixtures import write_mbs_right_pdf
+
+    pdf = write_mbs_right_pdf(
+        tmp_path / "WCR-MBS-B3-ZZ-SC-PH-5201-C03.pdf",
+        document_reference="WCR-MBS-B3-ZZ-SC-PH-5201",
+        title="B3 - Drainage SVP Schematic -\nSheet 1 of 3",
+        revision="C03",
+        suitability="A - Construction",
+        client="SEVEN CAPITAL WOODROW",
+        title_heading=False,
+        client_heading=False,
+        client_contact_heading=False,
+    )
+    result = check_pdf(pdf, load_config(config_dir))
+    assert "SEVEN CAPITAL WOODROW" in (result.titleblock.client or "").upper()
+    assert "Drainage SVP Schematic" in (result.titleblock.title or "")
+    assert "Sheet 1 of 3" in (result.titleblock.title or "")
+    assert CheckStatus.CLIENT_ERROR not in result.issues
+
+
 def test_oval_accepts_berkeley_homes_on_mbs_right(tmp_path: Path, config_dir: Path):
     from tests.pdf_fixtures import write_mbs_right_pdf
 

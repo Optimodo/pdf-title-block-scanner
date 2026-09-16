@@ -2,7 +2,14 @@ from __future__ import annotations
 
 from datetime import date
 
-from drawing_qa.extract import all_text, find_label, line_text, normalize_label, words_to_lines
+from drawing_qa.extract import (
+    all_text,
+    find_label,
+    join_revision_fragments,
+    line_text,
+    normalize_label,
+    words_to_lines,
+)
 from drawing_qa.models import (
     HistoryRow,
     HistorySpec,
@@ -75,7 +82,11 @@ def _clip_words_to_history_table(
 
 
 def _line_revision(line: list[Word]) -> Word | None:
-    candidates = [word for word in line if is_revision_token(word.text)]
+    candidates = [
+        word
+        for word in join_revision_fragments(line)
+        if is_revision_token(word.text)
+    ]
     if not candidates:
         return None
     pc = [word for word in candidates if is_pc_revision(word.text)]

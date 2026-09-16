@@ -4,7 +4,8 @@ import re
 from datetime import date, datetime
 
 REV_TOKEN = re.compile(r"^(?:[PC]\d{2}|[A-Z]\d?)$", re.IGNORECASE)
-_PC_REVISION = re.compile(r"^[PC]\d{1,2}$", re.IGNORECASE)
+# ISO P/C issues are P01/C02 (or unpadded C1). C0/P0 are CAD splits of C02/P01.
+_PC_REVISION = re.compile(r"^[PC](?:0[1-9]|[1-9]\d?)$", re.IGNORECASE)
 SUITABILITY_TOKEN = re.compile(r"^(?:S[0-7]|A[0-9]|B[0-9]|CR|AB|D2|P1)$", re.IGNORECASE)
 # CAD fonts sometimes emit Cyrillic letters that look like Latin C/P in C01/P01.
 _LATIN_LOOKALIKES = str.maketrans(
@@ -98,6 +99,8 @@ def normalize_revision_token(text: str) -> str:
 
 def is_revision_token(text: str) -> bool:
     token = normalize_revision_token(text)
+    if token in {"P0", "C0"}:
+        return False
     if not REV_TOKEN.fullmatch(token):
         return False
     return not SUITABILITY_TOKEN.fullmatch(token)
@@ -143,7 +146,10 @@ def parse_pc_revision(value: str | None) -> tuple[str, int] | None:
     match = re.fullmatch(r"([PC])(\d{1,2})", normalize_revision_token(value))
     if not match:
         return None
-    return match.group(1), int(match.group(2))
+    number = int(match.group(2))
+    if number < 1:
+        return None
+    return match.group(1), number
 
 
 def format_pc_revision(series: str, number: int) -> str:

@@ -25,10 +25,11 @@ from drawing_qa.paths import (
     designer_text_report_path,
     document_control_report_path,
     is_frozen,
+    next_available_paired_report_path,
     resolve_config_dir,
 )
 from drawing_qa.rename import RenameStats, apply_renames
-from drawing_qa.report import default_report_path, write_report
+from drawing_qa.report import default_report_path, report_stem, write_report
 from drawing_qa.timing import format_report as format_timing_report, is_enabled as timing_enabled
 from drawing_qa.version import TOOL_CHECKER, TOOL_CUSTOM, TOOL_RENAMER, tool_banner
 
@@ -289,12 +290,13 @@ def _print_rename_stats(stats: RenameStats) -> None:
 class DroppedSelection:
     pdfs: list[Path] = field(default_factory=list)
     dwgs: list[Path] = field(default_factory=list)
+    folders: list[Path] = field(default_factory=list)
     document_list: Path | None = None
     ignored: list[Path] = field(default_factory=list)
 
     @property
     def has_drawings(self) -> bool:
-        return bool(self.pdfs or self.dwgs)
+        return bool(self.pdfs or self.dwgs or self.folders)
 
 
 def _is_pdf(path: Path) -> bool:
@@ -322,6 +324,24 @@ def _working_folder(pdfs: list[Path], fallback: Path) -> Path:
     if len(parents) == 1:
         return next(iter(parents))
     return fallback
+
+
+def _tree_root(folders: list[Path]) -> Path:
+    """Dropped folder, or the shared parent when several sibling folders are dropped."""
+    resolved = [path.resolve() for path in folders]
+    if len(resolved) == 1:
+        return resolved[0]
+    parents = {path.parent for path in resolved}
+    if len(parents) == 1:
+        return next(iter(parents))
+    return resolved[0]
+
+
+def _relative_pdf_label(path: Path, folder: Path) -> str:
+    try:
+        return str(path.resolve().relative_to(folder.resolve()))
+    except ValueError:
+        return path.name
 
 
 def _take_dropped_inputs(argv: list[str]) -> tuple[list[str], DroppedSelection]:
@@ -359,12 +379,7 @@ def _take_dropped_inputs(argv: list[str]) -> tuple[list[str], DroppedSelection]:
             dropped.dwgs.append(candidate)
             continue
         if candidate.is_dir():
-            dropped.pdfs.extend(
-                path for path in candidate.iterdir() if _is_pdf(path)
-            )
-            dropped.dwgs.extend(
-                path for path in candidate.iterdir() if _is_dwg(path)
-            )
+            dropped.folders.append(candidate.resolve())
             continue
         if candidate.exists():
             dropped.ignored.append(candidate)
@@ -372,6 +387,7 @@ def _take_dropped_inputs(argv: list[str]) -> tuple[list[str], DroppedSelection]:
         remaining.append(item)
     dropped.pdfs = _unique_paths(dropped.pdfs)
     dropped.dwgs = _unique_paths(dropped.dwgs)
+    dropped.folders = _unique_paths(dropped.folders)
     return remaining, dropped
 
 
@@ -386,6 +402,64 @@ def _print_report_paths(saved: Path) -> None:
     control = document_control_report_path(saved)
     if control.is_file():
         print(f"Document control: {control}")
+
+
+def _group_results_by_folder(results) -> dict[Path, list]:
+    groups: dict[Path, list] = {}
+    for item in results:
+        groups.setdefault(item.path.parent.resolve(), []).append(item)
+    return groups
+
+
+def _write_tree_reports(
+    folder: Path,
+    results,
+    *,
+    output: Path | None = None,
+) -> list[Path]:
+    """Per-subfolder reports plus a master set in the dropped folder.
+
+    If every PDF sits directly in ``folder``, this is a single normal report.
+    """
+    root = folder.resolve()
+    nested = {
+        path: items
+        for path, items in _group_results_by_folder(results).items()
+        if path != root
+    }
+    if not nested:
+        saved = write_report(
+            results, output if output is not None else default_report_path(root, results)
+        )
+        _print_report_paths(saved)
+        return [saved]
+
+    written: list[Path] = []
+    print("Subfolder reports:")
+    for path in sorted(nested, key=lambda item: str(item).casefold()):
+        saved = write_report(nested[path], default_report_path(path, nested[path]))
+        try:
+            rel = path.relative_to(root)
+        except ValueError:
+            rel = path
+        print(f"  {rel}: {saved.name}")
+        designer = designer_report_path(saved)
+        if designer.is_file():
+            print(f"    Designer: {designer.name}")
+        control = document_control_report_path(saved)
+        if control.is_file():
+            print(f"    Document control: {control.name}")
+        written.append(saved)
+
+    master_path = output or next_available_paired_report_path(
+        root, f"{report_stem(results)}_master"
+    )
+    print()
+    print("Master report (this folder and all subfolders):")
+    master = write_report(results, master_path)
+    _print_report_paths(master)
+    written.append(master)
+    return written
 
 
 def _cli_check_flags_used(args: argparse.Namespace) -> bool:
@@ -512,6 +586,8 @@ def run_folder_check(
     prompt_checks: bool = False,
     pdfs: list[Path] | None = None,
     extra_dwgs: list[Path] | None = None,
+    split_subfolder_reports: bool = False,
+    list_folder: Path | None = None,
 ) -> int:
     folder = folder.resolve()
     config_path = resolve_config_dir(folder, config_dir)
@@ -524,6 +600,8 @@ def run_folder_check(
     print("=" * 60)
     print(f"Folder: {folder}")
     print(f"Config: {config_path}")
+    if split_subfolder_reports:
+        print("Drop: folder — scan subfolders, report in each, plus a master report here")
     if standardize_names:
         print("Rename: automatic — document reference + title + revision from the title block")
     print()
@@ -550,13 +628,15 @@ def run_folder_check(
     else:
         pdfs = [path.resolve() for path in pdfs if _is_pdf(path)]
     if not pdfs:
-        if selected:
+        if split_subfolder_reports:
+            print("No PDF files found in this folder or its subfolders.")
+        elif selected:
             print("No PDF files in the dropped selection.")
         else:
             print("No PDF files found in this folder.")
         return 2
 
-    if selected:
+    if selected and not split_subfolder_reports:
         print(f"Selected {len(pdfs)} PDF(s)")
     else:
         print(f"Found {len(pdfs)} PDF(s)")
@@ -566,7 +646,12 @@ def run_folder_check(
 
     def on_pdf(index: int, total: int, result) -> None:
         if progress:
-            print(f"[{index}/{total}] {result.path.name} ...", flush=True)
+            label = (
+                _relative_pdf_label(result.path, folder)
+                if split_subfolder_reports
+                else result.path.name
+            )
+            print(f"[{index}/{total}] {label} ...", flush=True)
             print(f"         {result.status.value}")
 
     results = check_paths(
@@ -576,6 +661,7 @@ def run_folder_check(
         on_pdf=on_pdf,
         document_list=document_list,
         extra_dwgs=extra_dwgs,
+        list_folder=list_folder,
     )
     if progress:
         print()
@@ -596,15 +682,21 @@ def run_folder_check(
                 for item in mismatches:
                     item.rename_result = "Not renamed"
 
-    report_path = output if output is not None else default_report_path(folder, results)
-    saved = write_report(results, report_path)
     _print_summary(results)
     if document_list is not None and not any(item.portal_list_name for item in results):
         print(
             f"  Portal document list not used: could not read Doc Ref / Revision "
             f"columns from {document_list.name}"
         )
-    _print_report_paths(saved)
+    if split_subfolder_reports:
+        print()
+        _write_tree_reports(folder, results, output=output)
+    else:
+        saved = write_report(
+            results,
+            output if output is not None else default_report_path(folder, results),
+        )
+        _print_report_paths(saved)
     if timing_enabled():
         print()
         print(format_timing_report())
@@ -754,7 +846,24 @@ def main(argv: list[str] | None = None) -> int:
             folder = app_dir()
             selected_pdfs = None
             extra_dwgs = None
-            if dropped.has_drawings:
+            split_subfolder_reports = False
+            list_folder = None
+            if dropped.folders:
+                folder = _tree_root(dropped.folders)
+                selected_pdfs = _unique_paths(
+                    [
+                        *dropped.pdfs,
+                        *[
+                            path
+                            for dropped_folder in dropped.folders
+                            for path in iter_pdfs(dropped_folder, recursive=True)
+                        ],
+                    ]
+                )
+                extra_dwgs = dropped.dwgs or None
+                split_subfolder_reports = True
+                list_folder = folder
+            elif dropped.has_drawings:
                 folder = _working_folder(dropped.pdfs, app_dir())
                 selected_pdfs = dropped.pdfs
                 extra_dwgs = dropped.dwgs or None
@@ -767,6 +876,8 @@ def main(argv: list[str] | None = None) -> int:
                 prompt_checks=_should_prompt_checks(args),
                 pdfs=selected_pdfs,
                 extra_dwgs=extra_dwgs,
+                split_subfolder_reports=split_subfolder_reports,
+                list_folder=list_folder,
             )
         elif args.command == "check":
             code = cmd_check(args)

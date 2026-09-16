@@ -1,4 +1,4 @@
-from drawing_qa.compare import compare_document
+from drawing_qa.compare import compare_document, titles_equivalent
 from drawing_qa.models import CheckStatus, FilenameFields, HistoryRow, RevisionHistory, TitleBlockFields
 
 
@@ -81,6 +81,37 @@ def test_title_compared_only_when_both_present():
     _comps, _hist, status, notes = compare_document(filename, titleblock, DEFAULT_RULES)
     assert status == CheckStatus.MISMATCH
     assert any("title mismatch" in note.lower() for note in notes)
+
+
+def test_hyphen_and_plural_titles_are_equivalent():
+    assert titles_equivalent(
+        "B4 Drainage SVP Schematics Sheet 1 of 3",
+        "B4 - Drainage SVP Schematic - Sheet 1 of 3",
+    )
+    assert titles_equivalent(
+        "B4 Drainage RWP Schematics",
+        "B4 - Drainage RWP Schematic",
+    )
+    assert not titles_equivalent(
+        "B4 Drainage SVP Schematic - Sheet 3 of 3",
+        "B4 - Drainage SVP Schematic - Sheet 2 of 3",
+    )
+    filename = FilenameFields(
+        raw_stem="x",
+        document_reference="WCR-MBS-B4-ZZ-SC-PH-5201",
+        revision="C02",
+        title="B4 Drainage SVP Schematics Sheet 1 of 3",
+        parse_ok=True,
+    )
+    titleblock = TitleBlockFields(
+        layout_id="mbs_right",
+        document_reference="WCR-MBS-B4-ZZ-SC-PH-5201",
+        revision="C02",
+        title="B4 - Drainage SVP Schematic - Sheet 1 of 3",
+    )
+    _comps, _hist, status, notes = compare_document(filename, titleblock, DEFAULT_RULES)
+    assert status == CheckStatus.MATCH
+    assert not any("title mismatch" in note.lower() for note in notes)
 
 
 def test_non_iso_filename_still_extracts_titleblock():

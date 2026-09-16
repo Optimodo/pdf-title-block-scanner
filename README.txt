@@ -3,7 +3,8 @@
 ================================================================================
 
 If you found this note next to some small programs (FName, FList, FNamePro,
-FUndo, QA-TB-Checker, QA-TB-File-Renamer, QA-TB-Custom-Checker), here is
+FUndo, QA-TB-Checker, QA-TB-File-Renamer, QA-TB-Custom-Checker,
+QA-TB-Comments-Organiser), here is
 what they are for, in plain language.
 
 These tools are for people who work with engineering drawing files (for example
@@ -73,6 +74,18 @@ help pull out or standardise the reference part so names match our filing rules.
     are in the middle of renaming and you do not want the portal checks
     filling the report yet.
 
+  QA-TB-Comments-Organiser
+    Use this on a folder of marked-up drawings that have mixed revisions
+    dumped together (for example P02 with P03, or C02 with C04). It reads
+    the revision from the title block — the same layouts as QA-TB-Checker —
+    and copies each PDF into Sorted\C01, Sorted\C02, and so on. The original
+    files stay in the dump folder. If the revision cannot be read, the copy
+    goes to Sorted\Unsorted so you can file it by hand. It writes a short
+    Excel transmittal (Comments_Organiser_ddmmyy.xlsx) that you can issue
+    with a share: how many comments files sit in each revision folder, then
+    a list sorted by revision with document reference, title, revision, and
+    whether the comments file is there. Title-block templates are omitted.
+
 These QA-TB programs need PDF drawings with selectable text (normal CAD
 exports). They do not read scanned paper drawings. Put the program in the
 folder with the PDFs, the same way as FName. The file name includes a
@@ -84,7 +97,13 @@ or QA-TB-Custom-Checker. Only those drawings are checked, not the whole
 folder. You can include PDFs, CAD files (DWG), and a portal document-list
 spreadsheet together. CAD files are not checked on their own; they are
 matched to the PDFs. If you do not include a portal list, QA-TB-Checker
-still looks for one in the drawings folder.
+still looks for one in the drawings folder. Drag a whole folder onto
+QA-TB-Checker (for example a date folder with B1, B2, B3 inside) to check
+every PDF in every subfolder. Each subfolder that has PDFs gets its own
+Excel report. A master report covering all of them is written in the
+folder you dropped. Double-clicking the program still only checks PDFs
+sitting next to it, not subfolders. Drag PDFs onto
+QA-TB-Comments-Organiser to copy only those files into Sorted.
 
 --------------------------------------------------------------------------------
   PORTAL DOCUMENT LIST (QA-TB-Checker)

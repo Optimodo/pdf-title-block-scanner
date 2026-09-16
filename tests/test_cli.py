@@ -340,5 +340,102 @@ def test_dropped_dwg_only_exits_without_scanning_folder(tmp_path: Path, monkeypa
     assert not (tmp_path / f"{_abc_report_stem()}.xlsx").is_file()
 
 
+def _report_blob(path: Path) -> str:
+    from openpyxl import load_workbook
+
+    wb = load_workbook(path)
+    return " ".join(
+        str(cell)
+        for row in wb["All documents"].iter_rows(min_row=2, values_only=True)
+        for cell in row
+        if cell
+    )
+
+
+def test_double_click_does_not_scan_subfolders(tmp_path: Path, monkeypatch):
+    write_bottom_right_pdf(
+        tmp_path / "ABC-WXY-ZZ-00-DR-A-0001-P01.pdf",
+        document_reference="ABC-WXY-ZZ-00-DR-A-0001",
+        title="Ground Floor GA",
+        revision="P01",
+    )
+    nested = tmp_path / "B1"
+    write_bottom_right_pdf(
+        nested / "ABC-WXY-ZZ-00-DR-A-0002-P01.pdf",
+        document_reference="ABC-WXY-ZZ-00-DR-A-0002",
+        title="First Floor GA",
+        revision="P01",
+    )
+    monkeypatch.setattr("drawing_qa.cli.app_dir", lambda: tmp_path)
+    code = main(["--no-pause"])
+    assert code == 0
+    stem = _abc_report_stem()
+    assert (tmp_path / f"{stem}.xlsx").is_file()
+    assert not (tmp_path / f"{stem}_master.xlsx").exists()
+    assert not (nested / f"{stem}.xlsx").exists()
+    blob = _report_blob(tmp_path / f"{stem}.xlsx")
+    assert "0001" in blob
+    assert "0002" not in blob
+
+
+def test_dropped_flat_folder_writes_one_report(tmp_path: Path, monkeypatch):
+    dump = tmp_path / "drawings"
+    write_bottom_right_pdf(
+        dump / "ABC-WXY-ZZ-00-DR-A-0001-P01.pdf",
+        document_reference="ABC-WXY-ZZ-00-DR-A-0001",
+        title="Ground Floor GA",
+        revision="P01",
+    )
+    exe_dir = tmp_path / "exe"
+    exe_dir.mkdir()
+    monkeypatch.setattr("drawing_qa.cli.app_dir", lambda: exe_dir)
+    code = main([str(dump), "--no-pause"])
+    assert code == 0
+    stem = _abc_report_stem()
+    assert (dump / f"{stem}.xlsx").is_file()
+    assert not (dump / f"{stem}_master.xlsx").exists()
+    assert not (exe_dir / f"{stem}.xlsx").exists()
+
+
+def test_dropped_folder_writes_subfolder_and_master_reports(tmp_path: Path, monkeypatch):
+    dump = tmp_path / "15-09-26"
+    b1 = dump / "SVP" / "B1"
+    b2 = dump / "SVP" / "B2"
+    write_bottom_right_pdf(
+        b1 / "ABC-WXY-ZZ-00-DR-A-0001-P01.pdf",
+        document_reference="ABC-WXY-ZZ-00-DR-A-0001",
+        title="Ground Floor GA",
+        revision="P01",
+    )
+    write_bottom_right_pdf(
+        b2 / "ABC-WXY-ZZ-00-DR-A-0002-P01.pdf",
+        document_reference="ABC-WXY-ZZ-00-DR-A-0002",
+        title="First Floor GA",
+        revision="P01",
+    )
+    exe_dir = tmp_path / "exe"
+    exe_dir.mkdir()
+    monkeypatch.setattr("drawing_qa.cli.app_dir", lambda: exe_dir)
+    code = main([str(dump), "--no-pause"])
+    assert code == 0
+    stem = _abc_report_stem()
+    b1_report = b1 / f"{stem}.xlsx"
+    b2_report = b2 / f"{stem}.xlsx"
+    master = dump / f"{stem}_master.xlsx"
+    assert b1_report.is_file()
+    assert b2_report.is_file()
+    assert master.is_file()
+    assert not (dump / "SVP" / f"{stem}.xlsx").exists()
+    assert not (exe_dir / f"{stem}.xlsx").exists()
+    assert not (exe_dir / f"{stem}_master.xlsx").exists()
+    assert "0001" in _report_blob(b1_report)
+    assert "0002" not in _report_blob(b1_report)
+    assert "0002" in _report_blob(b2_report)
+    assert "0001" not in _report_blob(b2_report)
+    master_blob = _report_blob(master)
+    assert "0001" in master_blob
+    assert "0002" in master_blob
+
+
 
 

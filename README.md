@@ -1,14 +1,15 @@
 # Drawing title-block QA
 
-Drop **QA-TB-Checker-v1.0.exe**, **QA-TB-File-Renamer-v1.0.exe**, or **QA-TB-Custom-Checker-v1.0.exe** into a folder of construction drawing PDFs and double-click. Each scan writes an Excel report next to the exe. The `v1.0` in the file name is the program version — a newer copy is `v1.1`, so you can tell it apart from an older one left in a drawings folder.
+Drop **QA-TB-Checker-v1.0.exe**, **QA-TB-File-Renamer-v1.0.exe**, **QA-TB-Custom-Checker-v1.0.exe**, or **QA-TB-Comments-Organiser-v1.0.exe** into a folder of construction drawing PDFs and double-click. The checker tools write an Excel QA report next to the exe. Comments Organiser copies marked-up PDFs into `Sorted\{revision}` and writes a short transmittal list of the comments files. The `v1.0` in the file name is the program version — a newer copy is `v1.1`, so you can tell it apart from an older one left in a drawings folder.
 
 This follows the same “run where it sits” pattern as [mbs-file-tools](https://github.com/Optimodo/mbs-file-tools). Use that toolkit to strip names down to the document reference only. Use **QA-TB-File-Renamer** in this project when you want names built from the **title-block** document reference, title, and revision (that needs the PDF scan).
 
-| Exe | Report | Rename |
+| Exe | Report | Rename / copy |
 | --- | --- | --- |
 | **QA-TB-Checker** | Yes | Optional. If the filename document reference disagrees with the title block, you are prompted to fix it. The rest of the existing name is kept. |
 | **QA-TB-File-Renamer** | Yes | Automatic. Every PDF with a readable title-block document reference is renamed to `{doc-ref}_{title}_{revision}.pdf`. No prompt. |
 | **QA-TB-Custom-Checker** | Yes | Same optional rename prompt as QA-TB-Checker. Double-click shows a numbered menu of QA checks (and a field-preview option) to turn off or on, then runs. Flags (`--disable`, `--checks`, `--previews`) skip the menu. |
+| **QA-TB-Comments-Organiser** | Yes (transmittal) | Does not rename. Copies commented PDFs into `Sorted\{revision}` using the title-block P/C revision (`C1` becomes `C01`). Originals stay in the dump folder. Unreadable revisions go to `Sorted\Unsorted`. |
 
 The report always keeps **File (as scanned)** as the name at the start of the run. After a rename, **New filename** and **Rename result** show what is on disk (or why a rename was skipped). Notes also record `Renamed from … to …`.
 
@@ -34,13 +35,15 @@ OCR for scanned PDFs is out of scope for this version. Sheets need a selectable 
    python scripts/build_exe.py
    ```
 
-   That produces `dist\QA-TB-Checker-v1.0.exe`, `dist\QA-TB-File-Renamer-v1.0.exe`, and `dist\QA-TB-Custom-Checker-v1.0.exe`.
+   That produces `dist\QA-TB-Checker-v1.0.exe`, `dist\QA-TB-File-Renamer-v1.0.exe`, `dist\QA-TB-Custom-Checker-v1.0.exe`, and `dist\QA-TB-Comments-Organiser-v1.0.exe`.
 
 2. Copy the exe you want into the folder that contains the drawing PDFs.
-3. Double-click to check every PDF in that folder, or drag one or more selected files onto the exe (PDFs, DWGs, and/or a portal spreadsheet). Only the dropped PDFs are checked. DWGs are used for pairing. If you do not drop a portal list, QA-TB-Checker still looks for one in the drawings folder.
-4. **QA-TB-Checker:** if a filename document reference does not match the title block, you can preview and apply a fix (paired DWG files are renamed the same way).
-5. **QA-TB-File-Renamer:** files are renamed automatically to `{doc-ref}_{title}_{revision}` from the title block; the Excel report lists original names, new names, and rename results.
-6. Open the `{project}_{ddmmyy}.xlsx` report in the same folder to review results.
+3. Double-click to check every PDF in **that folder only** (subfolders are ignored). Or drag one or more selected files onto the exe (PDFs, DWGs, and/or a portal spreadsheet). Only the dropped PDFs are checked. DWGs are used for pairing. If you do not drop a portal list, QA-TB-Checker still looks for one in the drawings folder.
+4. **Drop a folder** onto QA-TB-Checker, Custom-Checker, or File-Renamer (for example `15-09-26` with `SVP\B1` … `B8` inside). That walk **does** include subfolders. Each folder that contains PDFs gets its own Excel report (and designer / document-control sidecars when needed). The dropped folder also gets a **master** set named `{project}_{ddmmyy}_master.xlsx` covering every PDF in the tree. Double-clicking the exe still does not search subfolders.
+5. **QA-TB-Checker:** if a filename document reference does not match the title block, you can preview and apply a fix (paired DWG files are renamed the same way).
+6. **QA-TB-File-Renamer:** files are renamed automatically to `{doc-ref}_{title}_{revision}` from the title block; the Excel report lists original names, new names, and rename results.
+7. **QA-TB-Comments-Organiser:** drop this into a mixed comments dump (P02 with P03, C02 with C04, and so on). It copies each PDF into `Sorted\C01`, `Sorted\C02`, … from the title-block revision. Originals are left where they are. Drawings with no readable P/C revision are copied to `Sorted\Unsorted` for manual filing. The Excel file (`Comments_Organiser_{ddmmyy}.xlsx`) is a concise transmittal: a count of comments files per revision, then a list sorted by revision with document reference, title, revision, and whether the comments file is present. It is meant to go out with a share to designers. Title-block templates and copy paths are not included.
+8. Open the Excel report in the same folder to review results.
 
 **QA-TB-Custom-Checker** — 12 QA policy checks can be toggled, plus a report option for field-crop previews on every drawing (item 13 / `previews`, off by default). Double-click the exe for an on-screen menu (type a number or name, Enter to run). Or skip the menu from the command line:
 
@@ -93,6 +96,9 @@ python tbcheck.py --no-pause
 
 # Auto-rename to doc-ref_title_revision from the title block
 python tbcheck_rename.py --no-pause
+
+# Copy commented PDFs into Sorted/{revision}
+python tbcheck_comments.py --no-pause
 
 # Skip portal revision (and any other checks) for a custom run
 python tbcheck_custom.py --disable portal-revision --no-pause
@@ -183,4 +189,4 @@ pip install -e ".[build]"
 python scripts/build_exe.py
 ```
 
-On Linux that produces `dist/QA-TB-Checker-v1.0`, `dist/QA-TB-File-Renamer-v1.0`, and `dist/QA-TB-Custom-Checker-v1.0` (not Windows `.exe` files). Build the Windows exes with `build_exe.bat` on Windows.
+On Linux that produces `dist/QA-TB-Checker-v1.0`, `dist/QA-TB-File-Renamer-v1.0`, `dist/QA-TB-Custom-Checker-v1.0`, and `dist/QA-TB-Comments-Organiser-v1.0` (not Windows `.exe` files). Build the Windows exes with `build_exe.bat` on Windows.

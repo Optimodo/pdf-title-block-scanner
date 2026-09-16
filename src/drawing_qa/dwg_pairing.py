@@ -102,6 +102,20 @@ def unpaired_dwgs(results: list[DocumentResult], dwg_files: list[Path]) -> list[
     return [dwg for dwg in dwg_files if dwg.resolve() not in paired]
 
 
+def _dwg_pool_for(
+    result: DocumentResult,
+    extra_dwgs: list[Path] | None,
+) -> list[Path]:
+    """DWGs sitting next to this PDF, plus any files explicitly dropped."""
+    seen: dict[str, Path] = {}
+    for path in find_dwg_files(result.path.parent):
+        seen[str(path.resolve()).casefold()] = path
+    for path in extra_dwgs or []:
+        if path.is_file() and path.suffix.lower() == ".dwg":
+            seen[str(path.resolve()).casefold()] = path
+    return sorted(seen.values(), key=lambda item: item.name.casefold())
+
+
 def check_dwg_pairing(
     results: list[DocumentResult],
     folder: Path,
@@ -110,16 +124,9 @@ def check_dwg_pairing(
     flag_issues: bool = True,
 ) -> list[DocumentResult]:
     """Update results with paired_dwg / dwg_mismatch / dwg_issue and notes."""
-    seen: dict[str, Path] = {}
-    search_folders = [folder, *[result.path.parent for result in results]]
-    for search in search_folders:
-        for path in find_dwg_files(search):
-            seen[str(path.resolve()).casefold()] = path
-    for path in extra_dwgs or []:
-        if path.is_file() and path.suffix.lower() == ".dwg":
-            seen[str(path.resolve()).casefold()] = path
-    dwg_files = sorted(seen.values(), key=lambda item: item.name.casefold())
+    del folder  # pairing is per PDF folder so a tree scan does not mix buildings
     for result in results:
+        dwg_files = _dwg_pool_for(result, extra_dwgs)
         result.dwg_files_present = bool(dwg_files)
         result.dwg_issue = None
         if not dwg_files:

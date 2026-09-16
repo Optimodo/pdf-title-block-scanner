@@ -128,6 +128,39 @@ def line_text(line: list[Word]) -> str:
     return " ".join(word.text for word in line).strip()
 
 
+def join_revision_fragments(words: list[Word]) -> list[Word]:
+    """Join CAD splits such as 'C0' + '2' on the same line into 'C02'."""
+    if not words:
+        return []
+    joined: list[Word] = []
+    for line in words_to_lines(words):
+        line = sorted(line, key=lambda item: item.x0)
+        index = 0
+        while index < len(line):
+            word = line[index]
+            if index + 1 < len(line):
+                nxt = line[index + 1]
+                gap = nxt.x0 - word.x1
+                combined = normalize_revision_token(word.text + nxt.text)
+                short = normalize_revision_token(word.text)
+                close = gap <= 8
+                if close and is_pc_revision(combined) and len(combined) > len(short):
+                    joined.append(
+                        Word(
+                            x0=word.x0,
+                            y0=min(word.y0, nxt.y0),
+                            x1=nxt.x1,
+                            y1=max(word.y1, nxt.y1),
+                            text=combined,
+                        )
+                    )
+                    index += 2
+                    continue
+            joined.append(word)
+            index += 1
+    return joined
+
+
 def all_text(words: list[Word]) -> str:
     return "\n".join(line_text(line) for line in words_to_lines(words)).strip()
 
@@ -446,6 +479,7 @@ def apply_pattern(text: str | None, words: list[Word], pattern: str | None, fiel
         kept = [w for w in words if DATE_IN_TEXT.search(w.text) or w.text in value]
         return ExtractedField(name=field_name, value=value, words=kept or words)
     if field_name == "revision":
+        words = join_revision_fragments(words)
         candidates = [word for word in words if is_revision_token(word.text)]
         token = next((word for word in candidates if is_pc_revision(word.text)), None)
         if token is None and candidates:

@@ -236,6 +236,31 @@ def test_missing_dwg_is_flagged_when_folder_has_other_dwgs(tmp_path: Path, confi
     assert CheckStatus.DWG_ISSUE in by_name[pdf_missing.name].issues
 
 
+def test_dwg_missing_is_not_flagged_from_another_subfolder(
+    tmp_path: Path, config_dir: Path
+):
+    pdf_ok = write_bottom_right_pdf(
+        tmp_path / "B1" / "ABC-WXY-ZZ-00-DR-A-0001-P01.pdf",
+        document_reference="ABC-WXY-ZZ-00-DR-A-0001",
+        title="Floor Plan",
+        revision="P01",
+    )
+    pdf_other = write_bottom_right_pdf(
+        tmp_path / "B2" / "ABC-WXY-ZZ-00-DR-A-0002-P01.pdf",
+        document_reference="ABC-WXY-ZZ-00-DR-A-0002",
+        title="Roof Plan",
+        revision="P01",
+    )
+    (tmp_path / "B1" / "ABC-WXY-ZZ-00-DR-A-0001-P01.dwg").write_text("")
+    results = check_paths([pdf_ok, pdf_other], load_config(config_dir))
+    by_name = {item.path.name: item for item in results}
+    assert by_name[pdf_ok.name].paired_dwg is not None
+    assert by_name[pdf_other.name].paired_dwg is None
+    assert by_name[pdf_other.name].dwg_files_present is False
+    assert by_name[pdf_other.name].dwg_issue is None
+    assert CheckStatus.DWG_ISSUE not in by_name[pdf_other.name].issues
+
+
 def test_dwg_report_tab_lists_sheet_suffix_and_missing(tmp_path: Path, config_dir: Path):
     from openpyxl import load_workbook
 

@@ -1,5 +1,6 @@
 from drawing_qa.version import (
     TOOL_CHECKER,
+    TOOL_COMMENTS,
     TOOL_CUSTOM,
     TOOL_RENAMER,
     __version__,
@@ -14,4 +15,5 @@ def test_exe_names_use_dashes_and_short_version():
     assert versioned_exe_name(TOOL_CHECKER) == f"QA-TB-Checker-v{__version__}"
     assert versioned_exe_name(TOOL_CUSTOM) == f"QA-TB-Custom-Checker-v{__version__}"
     assert versioned_exe_name(TOOL_RENAMER) == f"QA-TB-File-Renamer-v{__version__}"
+    assert versioned_exe_name(TOOL_COMMENTS) == f"QA-TB-Comments-Organiser-v{__version__}"
     assert tool_banner(TOOL_CHECKER) == f"QA-TB-Checker v{__version__}"

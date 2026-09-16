@@ -39,6 +39,15 @@ def test_suitability_codes_are_not_revision_tokens():
     assert not is_revision_token("S5")
     assert not is_revision_token("S3")
     assert not is_revision_token("A1")
+    assert not is_revision_token("C0")
+    assert not is_revision_token("P0")
+    from drawing_qa.tokens import is_pc_revision, parse_pc_revision
+
+    assert is_pc_revision("C02")
+    assert is_pc_revision("C1")
+    assert not is_pc_revision("C0")
+    assert parse_pc_revision("C0") is None
+    assert parse_pc_revision("C02") == ("C", 2)
 
 
 def test_history_cyrillic_c_revision_is_not_read_as_suitability():
@@ -60,6 +69,23 @@ def test_history_cyrillic_c_revision_is_not_read_as_suitability():
     assert history.latest.date == "21.08.26"
     assert history.latest.suitability and history.latest.suitability.startswith("S5")
     assert [row.revision for row in history.rows] == ["C02", "P02"]
+
+
+def test_history_joins_split_c0_and_2_glyphs():
+    words = [
+        _w(10, 30, "C0", 12),
+        Word(x0=21.5, y0=30, x1=28, y1=38, text="2"),
+        _w(50, 30, "11.09.2026", 50),
+        _w(110, 30, "A", 10),
+        _w(125, 30, "CONSTRUCTION", 60),
+        _w(10, 42, "C01", 20),
+        _w(50, 42, "13.10.2025", 50),
+        _w(10, 70, "Amendments", 60),
+    ]
+    history = detect_revision_history(words)
+    assert [row.revision for row in history.rows] == ["C02", "C01"]
+    assert history.latest is not None
+    assert history.latest.revision == "C02"
 
 
 def test_history_latest_follows_newest_date_when_p_follows_c():

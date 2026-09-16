@@ -410,6 +410,25 @@ def test_detects_mbs_right_title_block(tmp_path: Path, config_dir: Path):
     assert result.status == CheckStatus.MATCH
 
 
+def test_split_c02_glyphs_are_read_as_c02(tmp_path: Path, config_dir: Path):
+    pdf = write_mbs_right_pdf(
+        tmp_path / "WCR-MBS-B2-29-DR-X-5229-C02.pdf",
+        document_reference="WCR-MBS-B2-29-DR-X-5229",
+        title="B2 - Drainage SVP RWP Layout - Level 29",
+        revision="C02",
+        suitability="A - Construction",
+        client="Seven Capital Woodrow",
+        split_revision_glyphs=True,
+    )
+    result = check_pdf(pdf, load_config(config_dir))
+    assert result.titleblock.revision == "C02"
+    assert result.titleblock.history.latest is not None
+    assert result.titleblock.history.latest.revision == "C02"
+    assert result.filename.revision == "C02"
+    rev = next(item for item in result.comparisons if item.name == "revision")
+    assert rev.matched is True
+
+
 def test_detects_mbs_right_wide_title_block(tmp_path: Path, config_dir: Path):
     pdf = write_mbs_right_wide_pdf(
         tmp_path / "R459-MBS-DZ-ZZ-DR-W-68200-P02.pdf",

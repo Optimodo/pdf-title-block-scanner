@@ -153,7 +153,11 @@ def _dwg_pairing_text(result: DocumentResult) -> str:
 def _dwg_files_for(results: list[DocumentResult]) -> list[Path]:
     if not results or not any(item.dwg_files_present for item in results):
         return []
-    return find_dwg_files(results[0].path.parent)
+    seen: dict[str, Path] = {}
+    for result in results:
+        for path in find_dwg_files(result.path.parent):
+            seen[str(path.resolve()).casefold()] = path
+    return sorted(seen.values(), key=lambda item: item.name.casefold())
 
 
 def _append_dwg_summary(ws: Worksheet, results: list[DocumentResult], row: int) -> int:

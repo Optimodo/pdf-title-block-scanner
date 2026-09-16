@@ -475,6 +475,56 @@ def test_portal_title_mismatch():
     assert CheckStatus.PORTAL_TITLE in result.issues
 
 
+def test_filename_title_ignored_when_title_block_matches_portal():
+    from drawing_qa.compare import build_result
+
+    result = DocumentResult(
+        path=Path("WCR-MBS-B4-ZZ-SC-PH-5204-C02.pdf"),
+        filename=FilenameFields(
+            raw_stem="WCR-MBS-B4-ZZ-SC-PH-5204 - B4 SVP_C02",
+            document_reference="WCR-MBS-B4-ZZ-SC-PH-5204",
+            title="B4 SVP",
+            revision="C02",
+            parse_ok=True,
+            parts={"project": "WCR"},
+        ),
+        titleblock=TitleBlockFields(
+            layout_id="mbs_right",
+            document_reference="WCR-MBS-B4-ZZ-SC-PH-5204",
+            title="B4 - Drainage RWP Schematic",
+            revision="C02",
+        ),
+    )
+    result = build_result(
+        result,
+        {
+            "document_reference": "required",
+            "revision": "if_both_present",
+            "title": "if_both_present",
+            "suitability": "if_both_present",
+            "date": "if_both_present",
+        },
+    )
+    assert result.status == CheckStatus.MISMATCH
+    layout = _layout()
+    index = DocumentListIndex(
+        path=Path("WCR Listing.xlsx"),
+        by_ref={
+            "WCR-MBS-B4-ZZ-SC-PH-5204": PortalDocument(
+                "WCR-MBS-B4-ZZ-SC-PH-5204",
+                "C01",
+                "B4 - Drainage RWP Schematic",
+            )
+        },
+    )
+    result = check_document_list([result], index, layout)[0]
+    finalize_status(result)
+    assert CheckStatus.MISMATCH not in result.issues
+    title = next(item for item in result.comparisons if item.name == "title")
+    assert title.matched is True
+    assert any("portal list agree" in note.lower() for note in result.notes)
+
+
 def test_check_paths_uses_folder_listing(tmp_path: Path, config_dir: Path):
     write_bottom_right_pdf(
         tmp_path / "ABC-WXY-ZZ-00-DR-A-0001-P01.pdf",

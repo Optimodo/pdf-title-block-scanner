@@ -12,7 +12,7 @@ from openpyxl import load_workbook
 from drawing_qa.checks import CheckOptions
 from drawing_qa.docref import canonical_doc_ref
 from drawing_qa.filename import parse_filename
-from drawing_qa.models import CheckStatus, DocumentResult, record_issue
+from drawing_qa.models import CheckStatus, DocumentResult, MISMATCH_FIELD_LABELS, record_issue
 from drawing_qa.tokens import (
     is_allowed_first_revision,
     is_revision_token,
@@ -780,15 +780,51 @@ def check_document_list(
 
         local_title = _local_title(result)
         if portal.title and local_title:
-            from drawing_qa.compare import normalize_title
+            from drawing_qa.compare import titles_equivalent
 
-            portal_norm = normalize_title(portal.title)
-            local_norm = normalize_title(local_title)
-            if portal_norm and local_norm and portal_norm != local_norm:
+            if not titles_equivalent(portal.title, local_title):
                 if options.allows("portal-title"):
                     result.notes.append(
                         f"Portal list title {portal.title!r} does not match title-block "
                         f"title {local_title!r}"
                     )
                     record_issue(result, CheckStatus.PORTAL_TITLE)
+        _ignore_filename_title_when_sources_agree(result)
     return results
+
+
+def _ignore_filename_title_when_sources_agree(result: DocumentResult) -> None:
+    """If title-block and portal titles agree, a shortened filename is not a CAD defect."""
+    from drawing_qa.compare import titles_equivalent
+
+    title_item = next((item for item in result.comparisons if item.name == "title"), None)
+    if title_item is None or title_item.matched is not False:
+        return
+    titleblock_title = result.titleblock.title
+    portal_title = result.portal_title
+    if not titleblock_title or not portal_title:
+        return
+    if not titles_equivalent(titleblock_title, portal_title):
+        return
+    title_item.matched = True
+    title_item.detail = "filename differs; title block matches portal list"
+    result.notes = [
+        note for note in result.notes if "title mismatch:" not in note.lower()
+    ]
+    result.notes.append(
+        f"Filename title {title_item.filename_value!r} differs from the drawing; "
+        f"title block and portal list agree on {titleblock_title!r}"
+    )
+    still_mismatch = any(
+        item.matched is False and item.name in MISMATCH_FIELD_LABELS
+        for item in result.comparisons
+    )
+    if still_mismatch:
+        return
+    result.issues = [item for item in result.issues if item != CheckStatus.MISMATCH]
+    if result.status == CheckStatus.MISMATCH:
+        result.status = result.issues[0] if result.issues else CheckStatus.MATCH
+        if result.status == CheckStatus.MATCH:
+            from drawing_qa.models import Confidence
+
+            result.confidence = Confidence.HIGH

@@ -11,10 +11,12 @@ CONFIG = ROOT / "src" / "drawing_qa" / "default_config"
 ENTRY = ROOT / "tbcheck.py"
 ENTRY_RENAME = ROOT / "tbcheck_rename.py"
 ENTRY_CUSTOM = ROOT / "tbcheck_custom.py"
+ENTRY_COMMENTS = ROOT / "tbcheck_comments.py"
 
 sys.path.insert(0, str(ROOT / "src"))
 from drawing_qa.version import (  # noqa: E402
     TOOL_CHECKER,
+    TOOL_COMMENTS,
     TOOL_CUSTOM,
     TOOL_RENAMER,
     versioned_exe_name,
@@ -59,11 +61,12 @@ def build_executable(entry_script: Path, exe_name: str) -> int:
 
 
 def main() -> int:
-    """Build the three versioned QA-TB executables."""
+    """Build the versioned QA-TB executables."""
     targets = (
         (ENTRY, versioned_exe_name(TOOL_CHECKER)),
         (ENTRY_RENAME, versioned_exe_name(TOOL_RENAMER)),
         (ENTRY_CUSTOM, versioned_exe_name(TOOL_CUSTOM)),
+        (ENTRY_COMMENTS, versioned_exe_name(TOOL_COMMENTS)),
     )
     for entry, name in targets:
         code = build_executable(entry, name)
@@ -72,9 +75,9 @@ def main() -> int:
             return code
 
     try:
-        print("\n✓ All three executables built successfully")
+        print("\n✓ All four executables built successfully")
     except UnicodeEncodeError:
-        print("\nOK: All three executables built successfully")
+        print("\nOK: All four executables built successfully")
     return 0
 
 

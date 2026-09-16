@@ -7,6 +7,7 @@ __version__ = "1.0"
 TOOL_CHECKER = "QA-TB-Checker"
 TOOL_CUSTOM = "QA-TB-Custom-Checker"
 TOOL_RENAMER = "QA-TB-File-Renamer"
+TOOL_COMMENTS = "QA-TB-Comments-Organiser"
 
 
 def versioned_exe_name(tool: str) -> str:
