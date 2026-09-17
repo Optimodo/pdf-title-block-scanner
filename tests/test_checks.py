@@ -58,6 +58,7 @@ def test_list_checks_mentions_portal_revision():
     text = format_check_list()
     assert "portal-revision" in text
     assert "schematic-type" in text
+    assert "level" in text
     assert "--disable portal-revision" in text
     assert "previews" in text
     assert "--enable previews" in text
@@ -74,7 +75,8 @@ def test_parse_check_choice_accepts_previews_number():
     from drawing_qa.checks import parse_check_choice
 
     assert parse_check_choice("13") == ["filename-parse"]
-    assert parse_check_choice("14") == ["previews"]
+    assert parse_check_choice("14") == ["level"]
+    assert parse_check_choice("15") == ["previews"]
     assert parse_check_choice("previews") == ["previews"]
     assert parse_check_choice("schematic-type") == ["schematic-type"]
 

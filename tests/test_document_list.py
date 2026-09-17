@@ -1,3 +1,4 @@
+import csv
 from pathlib import Path
 
 from openpyxl import Workbook
@@ -43,6 +44,15 @@ def _write_excel(
         ws.append(list(row))
     path.parent.mkdir(parents=True, exist_ok=True)
     wb.save(path)
+    return path
+
+
+def _write_csv(path: Path, headers: list[str], rows: list[list[str]]) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(headers)
+        writer.writerows(rows)
     return path
 
 
@@ -217,6 +227,119 @@ def test_wcr_uses_name_column_like_trillium(tmp_path: Path):
     row = index.get("WCR-MBS-B7-ZZ-DR-E-6105")
     assert row is not None
     assert row.revision == "C04"
+
+
+def test_load_4projects_csv_oval_uses_original_doc_ref(tmp_path: Path):
+    path = _write_csv(
+        tmp_path / "Book117_ovcd.csv",
+        [
+            "Name",
+            "Original Doc Ref (Non-Standard)",
+            "Revision Workflow",
+            "Description",
+            "Revision",
+            "Status",
+        ],
+        [
+            [
+                "R459-BGIT-9-000358",
+                "R459-MBS-DZ-ZZ-DR-W-50001",
+                "QA Approved",
+                "Utility cupboard",
+                "C01",
+                "S5 - For Construction",
+            ]
+        ],
+    )
+    index = load_document_list(path, _layout())
+    assert index.get("R459-MBS-DZ-ZZ-DR-W-50001") is not None
+    assert index.get("R459-BGIT-9-000358") is None
+    assert not index.csv_row_cap_hit
+
+
+def test_load_4projects_csv_trillium_and_wcr_use_name(tmp_path: Path):
+    tril = _write_csv(
+        tmp_path / "Book117_tril.csv",
+        ["Name", "Revision Workflow", "Description", "Revision", "Status"],
+        [
+            [
+                "R456-MAL20-BI-ZZ-DR-W-605-001",
+                "Under Review",
+                "Combined Services",
+                "P01",
+                "S3 - For Review & Comment",
+            ]
+        ],
+    )
+    wcr = _write_csv(
+        tmp_path / "Book117_wcr.csv",
+        ["Name", "Revision Workflow", "Description", "Revision", "Status"],
+        [
+            [
+                "WCR-MBS-B1-02-DR-E-6002",
+                "Document Control Review",
+                "Electrical Services Layout",
+                "C02",
+                "Construction",
+            ]
+        ],
+    )
+    tril_row = load_document_list(tril, _layout()).get("R456-MAL20-BI-ZZ-DR-W-605-001")
+    wcr_index = load_document_list(wcr, _layout())
+    wcr_row = wcr_index.get("WCR-MBS-B1-02-DR-E-6002")
+    assert tril_row is not None and tril_row.revision == "P01"
+    assert wcr_row is not None and wcr_row.status == "Document Control Review"
+    from drawing_qa.document_list import status_allows_upload
+
+    layout = _layout()
+    assert not status_allows_upload(wcr_row.status, layout, "WCR")
+    assert status_allows_upload("Status C", layout, "WCR")
+
+
+def test_csv_with_exactly_500_document_rows_is_flagged(tmp_path: Path):
+    from drawing_qa.document_list import CSV_DOCUMENT_ROW_CAP, csv_row_cap_warning
+
+    rows = [
+        [f"R456-MAL20-BI-ZZ-DR-W-{index:06d}", "Under Review", "Sheet", "P01", "S3"]
+        for index in range(CSV_DOCUMENT_ROW_CAP)
+    ]
+    capped = _write_csv(
+        tmp_path / "Book117_cap.csv",
+        ["Name", "Revision Workflow", "Description", "Revision", "Status"],
+        rows,
+    )
+    short = _write_csv(
+        tmp_path / "Book117_short.csv",
+        ["Name", "Revision Workflow", "Description", "Revision", "Status"],
+        rows[: CSV_DOCUMENT_ROW_CAP - 1],
+    )
+    capped_index = load_document_list(capped, _layout())
+    short_index = load_document_list(short, _layout())
+    assert capped_index.source_row_count == CSV_DOCUMENT_ROW_CAP
+    assert capped_index.csv_row_cap_hit
+    assert not short_index.csv_row_cap_hit
+    result = check_document_list(
+        [_drawing(project="R456", revision="P02", doc_ref="R456-MAL20-BI-ZZ-DR-W-000000")],
+        capped_index,
+        _layout(),
+    )[0]
+    assert result.portal_csv_row_cap_hit
+    assert "500" in csv_row_cap_warning(capped.name)
+
+
+def test_prefers_excel_listing_over_csv_when_both_map(tmp_path: Path):
+    csv_path = _write_csv(
+        tmp_path / "Export.csv",
+        ["Name", "Revision Workflow", "Description", "Revision", "Status"],
+        [["R456-MAL20-BI-ZZ-DR-W-605-001", "Under Review", "CSV copy", "P01", "S3"]],
+    )
+    excel = _write_4projects_name_listing(
+        tmp_path / "Document Listing.xlsx",
+        "R456-MAL20-BI-ZZ-DR-W-605-001",
+        "Excel copy",
+    )
+    csv_path.touch()
+    assert find_document_list(tmp_path, _layout(), project_codes=["R456"]) == excel
 
 
 def test_name_column_mapping_follows_pdf_project_when_listing_name_is_generic(

@@ -39,6 +39,15 @@ class DocumentTypeCheckConfig:
 
 
 @dataclass
+class LevelCheckConfig:
+    enabled: bool = True
+    fail_on_error: bool = True
+    projects: dict[str, list[str]] = field(default_factory=dict)
+    project_names: dict[str, str] = field(default_factory=dict)
+    hints: dict[str, dict[str, str]] = field(default_factory=dict)
+
+
+@dataclass
 class SuitabilityCheckConfig:
     enabled: bool = True
     fail_on_error: bool = True
@@ -77,6 +86,7 @@ class AppConfig:
     suitability_check: SuitabilityCheckConfig | None = None
     client_check: ClientCheckConfig | None = None
     document_type_check: DocumentTypeCheckConfig | None = None
+    level_check: LevelCheckConfig | None = None
     preview: PreviewConfig | None = None
     document_list: DocumentListConfig | None = None
     check_options: CheckOptions = field(default_factory=CheckOptions)
@@ -192,6 +202,61 @@ def _project_schematic_types(raw: dict) -> tuple[dict[str, str], dict[str, str]]
             if name:
                 names[code] = name
     return types, names
+
+
+def _as_level_code(item: object) -> str:
+    if isinstance(item, bool) or item is None:
+        return ""
+    if isinstance(item, int):
+        if 0 <= item <= 99:
+            return f"{item:02d}"
+        return str(item)
+    text = str(item).strip().upper()
+    if text.isdigit() and len(text) <= 2:
+        return text.zfill(2)
+    return text
+
+
+def _project_level_lists(
+    raw: dict,
+) -> tuple[dict[str, list[str]], dict[str, str], dict[str, dict[str, str]]]:
+    """Map ISO project codes to allowed level codes (4th filename field)."""
+    block = raw.get("projects") or {}
+    if not isinstance(block, dict):
+        return {}, {}, {}
+    projects: dict[str, list[str]] = {}
+    names: dict[str, str] = {}
+    hints: dict[str, dict[str, str]] = {}
+    for key, spec in block.items():
+        code = str(key).strip().upper()
+        if not code:
+            continue
+        name = ""
+        items: list = []
+        extra: dict[str, str] = {}
+        if isinstance(spec, dict):
+            items = spec.get("values") or spec.get("codes") or []
+            name = str(spec.get("name") or "").strip()
+            raw_hints = spec.get("hints") or {}
+            if isinstance(raw_hints, dict):
+                extra = {
+                    _as_level_code(hint_key): str(hint_val).strip()
+                    for hint_key, hint_val in raw_hints.items()
+                    if _as_level_code(hint_key) and str(hint_val).strip()
+                }
+        elif isinstance(spec, list):
+            items = spec
+        else:
+            continue
+        values = [_as_level_code(item) for item in items]
+        values = [item for item in values if item]
+        if values:
+            projects[code] = values
+            if name:
+                names[code] = name
+            if extra:
+                hints[code] = extra
+    return projects, names, hints
 
 
 def load_config(config_dir: Path | None = None) -> AppConfig:
@@ -310,6 +375,23 @@ def load_config(config_dir: Path | None = None) -> AppConfig:
         project_names=type_names,
     )
 
+    levels_path = config_dir / "levels.yaml"
+    if not levels_path.is_file():
+        bundled_levels = bundled_config_dir() / "levels.yaml"
+        if bundled_levels.is_file():
+            levels_path = bundled_levels
+    levels_raw: dict = {}
+    if levels_path.is_file():
+        levels_raw = yaml.safe_load(levels_path.read_text(encoding="utf-8")) or {}
+    level_projects, level_names, level_hints = _project_level_lists(levels_raw)
+    level_check = LevelCheckConfig(
+        enabled=bool(levels_raw.get("enabled", True)),
+        fail_on_error=bool(levels_raw.get("fail_on_error", True)),
+        projects=level_projects,
+        project_names=level_names,
+        hints=level_hints,
+    )
+
     timing_cfg = settings.get("timing") or {}
     configure_timing(bool(timing_cfg.get("enabled", False)))
 
@@ -344,6 +426,7 @@ def load_config(config_dir: Path | None = None) -> AppConfig:
         suitability_check=suitability_check,
         client_check=client_check,
         document_type_check=document_type_check,
+        level_check=level_check,
         preview=preview,
         document_list=document_list,
     )

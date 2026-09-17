@@ -28,7 +28,9 @@ prefer_name_contains:
 # Default is Oval C+D 4Projects: ISO number in Original Doc Ref (Non-Standard).
 # Trillium and West Cromwell Road also use 4Projects but store the number in
 # Name (column A). Holloway Park DocHosting uses Title; Barking Asite uses Doc Ref.
-# Set doc_ref on those projects below.
+# 4Projects CSV uses the same header names as Excel. CSV downloads cap at 500
+# rows — prefer Excel when both are present, and warn when a CSV has exactly 500
+# documents. Set doc_ref on those projects below.
 headers:
   doc_ref:
     - Original Doc Ref (Non-Standard)
@@ -99,6 +101,14 @@ status_map:
   QA Passed: QA Approved
   Issued: Under Review
   Under Review: Under Review
+  # WCR 4Projects CSV/Excel workflow stages (subset exports may only have these).
+  Status A: Status A
+  Status B: Status B
+  Status C: Status C
+  Document Control Review: Under Review
+  Design Management Review: Under Review
+  Consultant Review: Under Review
+  QA Check: Under Review
 
 # When a project turns construction_upgrade on, an approved P issue
 # (portal status A or B) must be superseded by C01. Purpose of issue

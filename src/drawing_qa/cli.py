@@ -17,7 +17,7 @@ from drawing_qa.checks import (
 )
 from drawing_qa.config_loader import load_config
 from drawing_qa.detect import crop_region_pixmap, region_debug_text
-from drawing_qa.document_list import is_spreadsheet
+from drawing_qa.document_list import is_spreadsheet, portal_csv_row_cap_warning
 from drawing_qa.extract import require_pymupdf
 from drawing_qa.paths import (
     app_dir,
@@ -202,6 +202,9 @@ def _print_summary(results) -> None:
     portal = next((item.portal_list_name for item in results if item.portal_list_name), "")
     if portal:
         print(f"  Portal document list: {portal}")
+        warning = portal_csv_row_cap_warning(results)
+        if warning:
+            print(f"  NOTE: {warning}")
 
 
 def _print_mismatch_summary(results) -> list:

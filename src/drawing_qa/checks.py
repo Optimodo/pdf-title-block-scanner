@@ -84,6 +84,11 @@ QA_CHECKS: tuple[QaCheck, ...] = (
         CheckStatus.FILENAME_PARSE_ERROR,
         "Filename is not ISO 19650",
     ),
+    QaCheck(
+        "level",
+        CheckStatus.LEVEL_ERROR,
+        "ISO level code (4th field) is not on the project list",
+    ),
 )
 
 CHECK_IDS: tuple[str, ...] = tuple(item.id for item in QA_CHECKS)

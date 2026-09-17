@@ -11,8 +11,24 @@ from drawing_qa.checks import CheckOptions
 from drawing_qa.config_loader import (
     ClientCheckConfig,
     DocumentTypeCheckConfig,
+    LevelCheckConfig,
     SpellCheckConfig,
     SuitabilityCheckConfig,
+)
+from drawing_qa.document_type import (
+    document_type_from_result,
+    drawing_title_from_result,
+    schematic_type_for_project,
+    schematic_type_note,
+    title_looks_like_schematic,
+)
+from drawing_qa.level import (
+    allowed_levels_for_project,
+    level_from_result,
+    level_hint,
+    level_is_allowed,
+    level_whitelist_note,
+    project_code_from_result,
 )
 from drawing_qa.models import (
     CheckStatus,
@@ -34,13 +50,6 @@ from drawing_qa.suitability import (
 )
 from drawing_qa.timing import span as timing_span
 from drawing_qa.docref import canonical_doc_ref
-from drawing_qa.document_type import (
-    document_type_from_result,
-    drawing_title_from_result,
-    schematic_type_for_project,
-    schematic_type_note,
-    title_looks_like_schematic,
-)
 from drawing_qa.history import history_first_row
 from drawing_qa.tokens import dates_equal, suitability_code
 
@@ -404,6 +413,7 @@ def build_result(
     client_check_config: ClientCheckConfig | None = None,
     check_options: CheckOptions | None = None,
     document_type_config: DocumentTypeCheckConfig | None = None,
+    level_check_config: LevelCheckConfig | None = None,
 ) -> DocumentResult:
     allowed: list[str] = []
     accept_code_only = True
@@ -541,6 +551,34 @@ def build_result(
             result.notes.append(schematic_type_note(got, expected))
             if document_type_config.fail_on_error:
                 record_issue(result, CheckStatus.SCHEMATIC_TYPE)
+
+    if (
+        options.allows("level")
+        and level_check_config
+        and level_check_config.enabled
+        and CheckStatus.UNDETECTED not in result.issues
+        and result.status != CheckStatus.UNDETECTED
+    ):
+        project = project_code_from_result(result)
+        allowed_levels = allowed_levels_for_project(project, level_check_config.projects)
+        if allowed_levels:
+            got = level_from_result(result)
+            result.level_got = got
+            if project:
+                result.level_list_name = level_check_config.project_names.get(
+                    project.strip().upper(), ""
+                )
+            if not level_is_allowed(got, allowed_levels):
+                hint = level_hint(got, project, level_check_config.hints)
+                result.notes.append(
+                    level_whitelist_note(
+                        got,
+                        project_name=result.level_list_name or project or "",
+                        hint=hint,
+                    )
+                )
+                if level_check_config.fail_on_error:
+                    record_issue(result, CheckStatus.LEVEL_ERROR)
 
     finalize_status(result)
     return result

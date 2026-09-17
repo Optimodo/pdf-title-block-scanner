@@ -68,9 +68,9 @@ help pull out or standardise the reference part so names match our filing rules.
   QA-TB-Custom-Checker
     Same as QA-TB-Checker, but you can turn some of the checks off.
     Double-click it and you will see a numbered list. Type a number (or a
-    few) to switch a check off, then press Enter to run. Item 13 turns on
-    field-crop pictures of every drawing in the Excel report (off by
-    default, because it makes the report slower). This is useful when you
+    few) to switch a check off, then press Enter to run. The last item
+    turns on field-crop pictures of every drawing in the Excel report (off
+    by default, because it makes the report slower). This is useful when you
     are in the middle of renaming and you do not want the portal checks
     filling the report yet.
 
@@ -112,6 +112,12 @@ QA-TB-Comments-Organiser to copy only those files into Sorted.
   The "portal list" is a document list you export from the client's
   document portal, such as 4Projects or Asite. Save that spreadsheet
   (Excel or CSV) in the same folder as the drawings and QA-TB-Checker.
+  CSV is fine for Holloway Park and for 4Projects (Oval C+D, Trillium,
+  West Cromwell Road). Those CSV downloads stop at 500 documents — if
+  the file has exactly 500 rows, the report asks you to request the
+  Excel export instead, because the CSV is likely missing drawings.
+  Excel is slower (emailed) but complete. CSV is instant and is enough
+  when the project is still small or you are checking a subset.
 
   When that file is there, the Excel report will also compare each drawing
   with what is already on the portal:

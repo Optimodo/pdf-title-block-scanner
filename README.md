@@ -45,7 +45,7 @@ OCR for scanned PDFs is out of scope for this version. Sheets need a selectable 
 7. **QA-TB-Comments-Organiser:** drop this into a mixed comments dump (P02 with P03, C02 with C04, and so on). It copies each PDF into `Sorted\C01`, `Sorted\C02`, … from the title-block revision. Originals are left where they are. Drawings with no readable P/C revision are copied to `Sorted\Unsorted` for manual filing. The Excel file (`Comments_Organiser_{ddmmyy}.xlsx`) is a concise transmittal: a count of comments files per revision, then a list sorted by revision with document reference, title, revision, and whether the comments file is present. It is meant to go out with a share to designers. Title-block templates and copy paths are not included.
 8. Open the Excel report in the same folder to review results.
 
-**QA-TB-Custom-Checker** — 12 QA policy checks can be toggled, plus a report option for field-crop previews on every drawing (item 13 / `previews`, off by default). Double-click the exe for an on-screen menu (type a number or name, Enter to run). Or skip the menu from the command line:
+**QA-TB-Custom-Checker** — 14 QA policy checks can be toggled, plus a report option for field-crop previews on every drawing (item 15 / `previews`, off by default). Double-click the exe for an on-screen menu (type a number or name, Enter to run). Or skip the menu from the command line:
 
 ```bat
 QA-TB-Custom-Checker-v1.0.exe --disable portal-revision
@@ -57,7 +57,7 @@ QA-TB-Custom-Checker-v1.0.exe --list-checks
 
 `--disable` / `--enable` / `--checks` also work on `drawing-qa check` and the other exes. Extraction failures (UNDETECTED, INCOMPLETE, ERROR) cannot be turned off.
 
-Optional: copy a `config\` folder next to the exe to override bundled title-block layouts, the purpose-of-issue whitelist (`suitability.yaml`), title-block client names (`clients.yaml`), schematic type codes (`document_types.yaml`), and portal document-list column names (`document_lists.yaml`). If that folder is missing, the exe uses the files baked into it.
+Optional: copy a `config\` folder next to the exe to override bundled title-block layouts, the purpose-of-issue whitelist (`suitability.yaml`), title-block client names (`clients.yaml`), schematic type codes (`document_types.yaml`), ISO level codes (`levels.yaml`), and portal document-list column names (`document_lists.yaml`). If that folder is missing, the exe uses the files baked into it.
 
 The exe looks at PDFs in **that folder**, not subfolders (unless `--recursive` is specified). It does not use the network.
 
@@ -69,6 +69,7 @@ If a client-portal export (Excel or CSV) is in the drawings folder, QA-TB-Checke
 
 - Drop the spreadsheet onto `QA-TB-Checker-v1.0.exe`, on its own or together with selected PDFs. Windows passes those paths as arguments.
 - Or leave the export in the drawings folder. Names containing Listing, Document List, Asite, 4Project, Export, or Dump are preferred. IRS / Drawing Schedule / TBCheck / QA-TB / Comments Report files are ignored.
+- **CSV is accepted** for Holloway Park (DocHosting) and for 4Projects projects (Oval C+D, Trillium, West Cromwell Road). Column names match the Excel export (Oval: Original Doc Ref; Trillium/WCR: Name). 4Projects CSV downloads stop at **500** documents. If the file has exactly 500 rows, the report notes that the list is likely incomplete and an Excel export should be requested (Excel is emailed and takes a few minutes; CSV is instant and is fine for small projects or a subset). When both a CSV and an Excel list are in the folder, Excel is used.
 - Or pass `--document-list path\to\export.xlsx`, or `drawing-qa check path\to\export.xlsx` (PDFs are scanned in that file's folder).
 
 If no usable list is found, the rest of the QA run is unchanged.
@@ -176,6 +177,7 @@ Each data row is medium height and includes a **preview strip**: five tight crop
 | `PORTAL_TITLE` | Title disagrees with the portal document list |
 | `CLIENT_ERROR` | Title-block client name is missing or not on the project list (`clients.yaml`) |
 | `SCHEMATIC_TYPE` | Title contains schematic, but the ISO type (5th field) is not the project code in `document_types.yaml` |
+| `LEVEL_ERROR` | ISO level code (4th field) is not on the project list in `levels.yaml` (Trillium is strict: basement is B1/B2/B3, not BA) |
 | `ERROR` | PDF could not be read |
 | `MULTIPLE_ISSUES` | More than one issue; column A lists them all |
 

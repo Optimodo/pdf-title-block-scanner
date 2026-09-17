@@ -234,7 +234,9 @@ def test_custom_prompt_toggles_portal_revision(tmp_path: Path, monkeypatch, caps
     code = custom_main(["--prompt-checks", "--no-pause"])
     assert code == 0
     out = capsys.readouterr().out
-    assert "12 QA checks" in out
+    from drawing_qa.checks import QA_CHECKS
+
+    assert f"{len(QA_CHECKS)} QA checks" in out
     assert "Disabled checks: portal-revision" in out
 
 
@@ -248,7 +250,9 @@ def test_custom_prompt_can_turn_on_field_previews(tmp_path: Path, monkeypatch, c
         revision="P01",
     )
     monkeypatch.setattr("drawing_qa.cli.app_dir", lambda: tmp_path)
-    answers = iter(["13", ""])
+    from drawing_qa.checks import MENU_COUNT
+
+    answers = iter([str(MENU_COUNT), ""])
     monkeypatch.setattr("builtins.input", lambda *a, **k: next(answers))
     code = custom_main(["--prompt-checks", "--no-pause"])
     assert code == 0

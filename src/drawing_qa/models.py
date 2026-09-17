@@ -22,6 +22,7 @@ class CheckStatus(StrEnum):
     PORTAL_TITLE = "PORTAL_TITLE"
     CLIENT_ERROR = "CLIENT_ERROR"
     SCHEMATIC_TYPE = "SCHEMATIC_TYPE"
+    LEVEL_ERROR = "LEVEL_ERROR"
     FILENAME_PARSE_ERROR = "FILENAME_PARSE_ERROR"
     ERROR = "ERROR"
     MULTIPLE_ISSUES = "MULTIPLE_ISSUES"
@@ -264,12 +265,15 @@ class DocumentResult:
     portal_first_revisions: list[str] = field(default_factory=list)
     portal_status: str | None = None
     portal_has_status_column: bool = False
+    portal_csv_row_cap_hit: bool = False
     portal_blocks_upload: bool = False
     proposed_upload_revision: str | None = None
     construction_upgrade_required: bool = False
     allowed_clients: list[str] = field(default_factory=list)
     schematic_type_expected: str | None = None
     schematic_type_got: str | None = None
+    level_got: str | None = None
+    level_list_name: str = ""
 
     def mismatch_field_labels(self) -> list[str]:
         """Human names of filename vs title-block fields that disagreed."""

@@ -24,9 +24,12 @@ from drawing_qa.tokens import (
 )
 
 LIST_SUFFIXES = {".xlsx", ".xlsm", ".csv"}
+_EXCEL_SUFFIXES = {".xlsx", ".xlsm"}
 _HEADER_SCAN_ROWS = 12
 _DEFAULT_FIRST = ("P01",)
 _REPORT_STEM = re.compile(r"_\d{6}(?:-\d+)?$", re.I)
+# 4Projects CSV downloads stop at 500 items; Excel is emailed and is complete.
+CSV_DOCUMENT_ROW_CAP = 500
 
 
 @dataclass(frozen=True)
@@ -67,12 +70,29 @@ class DocumentListIndex:
     path: Path
     by_ref: dict[str, PortalDocument] = field(default_factory=dict)
     has_status: bool = False
+    source_row_count: int = 0
+    csv_row_cap_hit: bool = False
 
     def get(self, doc_ref: str | None) -> PortalDocument | None:
         key = canonical_doc_ref(doc_ref)
         if not key:
             return None
         return self.by_ref.get(key)
+
+
+def csv_row_cap_warning(name: str) -> str:
+    return (
+        f"{name} has exactly {CSV_DOCUMENT_ROW_CAP} documents, which is the "
+        "4Projects CSV export limit. The list is likely incomplete — request an "
+        "Excel export for a full portal check."
+    )
+
+
+def portal_csv_row_cap_warning(results: list[DocumentResult]) -> str | None:
+    if not any(item.portal_csv_row_cap_hit for item in results):
+        return None
+    name = next((item.portal_list_name for item in results if item.portal_list_name), "CSV")
+    return csv_row_cap_warning(name)
 
 
 def load_document_list_layout(raw: dict | None) -> DocumentListLayout:
@@ -298,11 +318,12 @@ def find_document_list(
             for key in layout.search_keys.get(code.upper(), []):
                 if key.upper() in stem:
                     key_hits += 1
-        scored.append((key_hits, prefer, path.stat().st_mtime, path))
+        excel = 1 if path.suffix.lower() in _EXCEL_SUFFIXES else 0
+        scored.append((excel, key_hits, prefer, path.stat().st_mtime, path))
     if not scored:
         return None
-    scored.sort(key=lambda item: (item[0], item[1], item[2]), reverse=True)
-    return scored[0][3]
+    scored.sort(key=lambda item: (item[0], item[1], item[2], item[3]), reverse=True)
+    return scored[0][4]
 
 
 def _norm_header(value: object) -> str:
@@ -542,10 +563,17 @@ def load_document_list(
     project_codes: list[str] | None = None,
 ) -> DocumentListIndex:
     mapping, header_row, rows = _read_table(path, layout, project_codes=project_codes)
-    index = DocumentListIndex(path=path, has_status="status" in (mapping or {}))
+    data_rows = rows[header_row + 1 :] if mapping is not None else []
+    nonempty = sum(1 for row in data_rows if any(_cell_text(cell) for cell in row))
+    index = DocumentListIndex(
+        path=path,
+        has_status="status" in (mapping or {}),
+        source_row_count=nonempty,
+        csv_row_cap_hit=path.suffix.lower() == ".csv" and nonempty == CSV_DOCUMENT_ROW_CAP,
+    )
     if mapping is None:
         return index
-    for row in rows[header_row + 1 :]:
+    for row in data_rows:
         if not row:
             continue
         raw_ref = _cell_text(row[mapping["doc_ref"]] if mapping["doc_ref"] < len(row) else "")
@@ -714,6 +742,7 @@ def check_document_list(
     source = index.path.name
     for result in results:
         result.portal_list_name = source
+        result.portal_csv_row_cap_hit = index.csv_row_cap_hit
         doc_ref = _local_doc_ref(result)
         local_rev = _local_revision(result)
         project = (result.filename.parts.get("project") or "").strip().upper()

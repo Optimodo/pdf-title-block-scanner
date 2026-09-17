@@ -180,3 +180,32 @@ def test_designer_sheet_centers_all_but_changes_column(tmp_path: Path):
     assert sheet.cell(data, 1).alignment.horizontal == "center"
     assert sheet.cell(data, 2).alignment.horizontal == "center"
     assert sheet.cell(data, 3).alignment.horizontal == "left"
+
+
+def test_summary_notes_csv_500_row_cap(tmp_path: Path):
+    result = _result(project="R459", name="Oval C+D", confidence=Confidence.REVIEW)
+    result.issues = [CheckStatus.MISMATCH]
+    result.portal_list_name = "Book117.csv"
+    result.portal_csv_row_cap_hit = True
+    output = write_report([result], tmp_path / "full.xlsx")
+    from openpyxl import load_workbook
+
+    summary = load_workbook(output)["Summary"]
+    portal_rows = [
+        summary.cell(row, 1).value
+        for row in range(1, 40)
+        if summary.cell(row, 1).value
+    ]
+    assert "Portal list" in portal_rows
+    assert "Book117.csv" in [
+        summary.cell(row, 1).value for row in range(1, 40)
+    ]
+    meaning = next(
+        summary.cell(row, 3).value
+        for row in range(1, 40)
+        if summary.cell(row, 1).value == "Book117.csv"
+    )
+    assert "500" in meaning
+    assert "Excel" in meaning
+    designer = load_workbook(designer_report_path(output)).active
+    assert "CSV capped at 500" in str(designer["B7"].value)

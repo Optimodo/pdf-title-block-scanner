@@ -18,7 +18,7 @@ from drawing_qa.designer_brief import (
     designer_title,
     format_designer_text_report,
 )
-from drawing_qa.document_list import blocked_uploads
+from drawing_qa.document_list import blocked_uploads, portal_csv_row_cap_warning
 from drawing_qa.dwg_pairing import find_dwg_files, unpaired_dwgs
 from drawing_qa.models import CheckStatus, Confidence, DocumentResult
 from drawing_qa.paths import (
@@ -48,6 +48,7 @@ STATUS_FILL = {
     CheckStatus.PORTAL_TITLE: PatternFill("solid", fgColor="F8CBAD"),
     CheckStatus.CLIENT_ERROR: PatternFill("solid", fgColor="F8CBAD"),
     CheckStatus.SCHEMATIC_TYPE: PatternFill("solid", fgColor="F8CBAD"),
+    CheckStatus.LEVEL_ERROR: PatternFill("solid", fgColor="F8CBAD"),
     CheckStatus.FILENAME_PARSE_ERROR: PatternFill("solid", fgColor="F4B183"),
     CheckStatus.ERROR: PatternFill("solid", fgColor="D9D9D9"),
     CheckStatus.MULTIPLE_ISSUES: PatternFill("solid", fgColor="C65911"),
@@ -206,6 +207,31 @@ def _append_dwg_summary(ws: Worksheet, results: list[DocumentResult], row: int) 
             ws.cell(row, col).font = BODY_FONT
         row += 1
     return row
+
+
+def _append_portal_summary(ws: Worksheet, results: list[DocumentResult], row: int) -> int:
+    """Portal list name and CSV 500-row cap warning. Returns the next empty row."""
+    portal = next((item.portal_list_name for item in results if item.portal_list_name), "")
+    if not portal:
+        return row
+    ws.cell(row, 1, "Portal list")
+    ws.cell(row, 2, "Count")
+    ws.cell(row, 3, "Meaning")
+    for col in ("A", "B", "C"):
+        ws[f"{col}{row}"].font = HEADER_FONT
+        ws[f"{col}{row}"].fill = HEADER_FILL
+    row += 1
+    warning = portal_csv_row_cap_warning(results)
+    ws.cell(row, 1, portal)
+    ws.cell(row, 2, sum(1 for item in results if item.portal_list_name))
+    ws.cell(row, 3, warning or "Revision and title checked against this export")
+    ws.cell(row, 3).alignment = Alignment(wrap_text=True)
+    if warning:
+        ws.cell(row, 1).fill = CONF_FILL[Confidence.REVIEW]
+        ws.row_dimensions[row].height = 36
+    for col in range(1, 4):
+        ws.cell(row, col).font = BODY_FONT
+    return row + 1
 
 
 def _write_dwg_sheet(ws: Worksheet, results: list[DocumentResult]) -> None:
@@ -467,6 +493,7 @@ def _write_summary(ws: Worksheet, results: list[DocumentResult]) -> None:
         CheckStatus.PORTAL_TITLE: "Title disagrees with the portal document list",
         CheckStatus.CLIENT_ERROR: "Title-block client name is missing or not on the project list (clients.yaml)",
         CheckStatus.SCHEMATIC_TYPE: "Title contains schematic, but the ISO type code (5th field) is not the project schematic code (document_types.yaml)",
+        CheckStatus.LEVEL_ERROR: "ISO level code (4th field) is not on the project list (levels.yaml)",
         CheckStatus.FILENAME_PARSE_ERROR: "Filename is not ISO 19650; title-block values are still shown",
         CheckStatus.ERROR: "PDF could not be read",
         CheckStatus.MULTIPLE_ISSUES: "More than one issue — see Notes and the status list in column A",
@@ -485,6 +512,9 @@ def _write_summary(ws: Worksheet, results: list[DocumentResult]) -> None:
         row += 1
 
     row = _append_dwg_summary(ws, results, row + 1)
+    portal_row = _append_portal_summary(ws, results, row + 1)
+    if portal_row != row + 1:
+        row = portal_row
 
     if any(item.rename_result for item in results):
         row += 1
@@ -574,13 +604,16 @@ def _write_simple_summary(ws: Worksheet, results: list[DocumentResult]) -> int:
     title.font = Font(bold=True, size=12, color="1F4E79")
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=3)
     portal = next((item.portal_list_name for item in results if item.portal_list_name), "")
+    portal_value = portal or "—"
+    if portal_csv_row_cap_warning(results):
+        portal_value = f"{portal} — CSV capped at 500; request Excel export"
     rows = (
         (2, "Project", label),
         (3, "Date", when.strftime("%d/%m/%y")),
         (4, "Drawings checked", total),
         (5, "Need action", need),
         (6, "OK", ok),
-        (7, "Portal list", portal or "—"),
+        (7, "Portal list", portal_value),
     )
     for row, heading, value in rows:
         key = ws.cell(row, 1, heading)

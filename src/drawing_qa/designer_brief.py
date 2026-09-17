@@ -291,6 +291,8 @@ def _issue_actions(
         return [_client_action(result)]
     if status == CheckStatus.SCHEMATIC_TYPE:
         return [_schematic_type_action(result)]
+    if status == CheckStatus.LEVEL_ERROR:
+        return [_level_action(result)]
     if status == CheckStatus.ERROR:
         return ["This PDF could not be opened. Re-export the drawing."]
     return []
@@ -389,6 +391,20 @@ def _schematic_type_action(result: DocumentResult) -> str:
     return (
         "The title contains schematic, so the document type (5th part of the drawing number) "
         "must use this project's schematic code."
+    )
+
+
+def _level_action(result: DocumentResult) -> str:
+    got = (result.level_got or "").strip() or "this value"
+    label = result.level_list_name or "this project"
+    if got.upper() == "BA":
+        return (
+            "Change the level code (4th part of the drawing number) from BA. "
+            "Basement must be B1, B2, or B3, not BA."
+        )
+    return (
+        f"Change the level code (4th part of the drawing number) from {got} "
+        f"to a {label} code."
     )
 
 
