@@ -14,6 +14,7 @@ from drawing_qa.docref import canonical_doc_ref
 from drawing_qa.filename import parse_filename
 from drawing_qa.models import CheckStatus, DocumentResult, MISMATCH_FIELD_LABELS, record_issue
 from drawing_qa.tokens import (
+    canonical_revision,
     is_allowed_first_revision,
     is_revision_token,
     is_successor_revision,
@@ -43,6 +44,8 @@ class DocumentListLayout:
     title_headers: list[str]
     revision_headers: list[str]
     status_headers: list[str] = field(default_factory=list)
+    days_to_expire_headers: list[str] = field(default_factory=list)
+    path_headers: list[str] = field(default_factory=list)
     skip_name_contains: list[str] = field(default_factory=list)
     prefer_name_contains: list[str] = field(default_factory=list)
     first_revisions: dict[str, list[str]] = field(default_factory=dict)
@@ -50,10 +53,13 @@ class DocumentListLayout:
     status_map: dict[str, str] = field(default_factory=dict)
     project_status_maps: dict[str, dict[str, str]] = field(default_factory=dict)
     uploadable_statuses: list[str] = field(default_factory=list)
+    replaceable_statuses: list[str] = field(default_factory=list)
+    rejected_revisions: dict[str, list[str]] = field(default_factory=dict)
     construction_upgrade: dict[str, ConstructionUpgradeSpec] = field(default_factory=dict)
     project_doc_ref_headers: dict[str, list[str]] = field(default_factory=dict)
     project_title_headers: dict[str, list[str]] = field(default_factory=dict)
     project_status_headers: dict[str, list[str]] = field(default_factory=dict)
+    project_path_contains: dict[str, list[str]] = field(default_factory=dict)
     enabled: bool = True
 
 
@@ -63,6 +69,7 @@ class PortalDocument:
     revision: str
     title: str = ""
     status: str = ""
+    days_to_expire: int | None = None
 
 
 @dataclass
@@ -106,6 +113,8 @@ def load_document_list_layout(raw: dict | None) -> DocumentListLayout:
     project_doc_ref: dict[str, list[str]] = {}
     project_title: dict[str, list[str]] = {}
     project_status_hdr: dict[str, list[str]] = {}
+    rejected_revs: dict[str, list[str]] = {}
+    project_path_contains: dict[str, list[str]] = {}
     default_doc_ref = _string_list(headers.get("doc_ref"))
     default_title = _string_list(headers.get("doc_title"))
     default_status = _string_list(headers.get("status"))
@@ -145,12 +154,21 @@ def load_document_list_layout(raw: dict | None) -> DocumentListLayout:
         status_override = _merge_header_list(spec.get("status"), default_status)
         if status_override:
             project_status_hdr[project] = status_override
+        extras = _string_list(spec.get("rejected_revisions") or spec.get("replace_revisions"))
+        if extras:
+            rejected_revs[project] = extras
+        path_contains = _string_list(spec.get("path_contains"))
+        if path_contains:
+            project_path_contains[project] = path_contains
     return DocumentListLayout(
         enabled=bool(data.get("enabled", True)),
         doc_ref_headers=default_doc_ref,
         title_headers=default_title,
         revision_headers=_string_list(headers.get("revision")),
         status_headers=default_status,
+        days_to_expire_headers=_string_list(headers.get("days_to_expire"))
+        or ["Days To Expire", "Days to Expire", "Days To Expiry"],
+        path_headers=_string_list(headers.get("path")) or ["Project Folder"],
         skip_name_contains=_string_list(data.get("skip_name_contains")),
         prefer_name_contains=_string_list(data.get("prefer_name_contains")),
         first_revisions=first,
@@ -159,10 +177,14 @@ def load_document_list_layout(raw: dict | None) -> DocumentListLayout:
         project_status_maps=project_status,
         uploadable_statuses=_string_list(data.get("uploadable_statuses"))
         or ["Status A", "Status B", "Status C", "A", "B", "C"],
+        replaceable_statuses=_string_list(data.get("replaceable_statuses"))
+        or ["QA Rejected", "QC Rejected"],
+        rejected_revisions=rejected_revs,
         construction_upgrade=upgrades,
         project_doc_ref_headers=project_doc_ref,
         project_title_headers=project_title,
         project_status_headers=project_status_hdr,
+        project_path_contains=project_path_contains,
     )
 
 
@@ -206,7 +228,7 @@ def _headers_for(
     path: Path | None = None,
     project_codes: list[str] | None = None,
 ) -> list[str]:
-    """Oval uses Original Doc Ref; Trillium/WCR use Name; Holloway uses Title; Asite uses Status."""
+    """Oval uses Original Doc Ref; Trillium/WCR use Name; Holloway uses Drawing/Document or Title; Asite uses Status."""
     defaults = {
         "doc_ref": layout.doc_ref_headers,
         "doc_title": layout.title_headers,
@@ -222,6 +244,24 @@ def _headers_for(
         if override:
             return override
     return list(defaults)
+
+
+def _path_contains_for(
+    layout: DocumentListLayout,
+    path: Path | None = None,
+    project_codes: list[str] | None = None,
+) -> list[str]:
+    """Holloway dumps mix every contractor; keep only folders matching these tokens."""
+    for code in _project_codes_for(layout, path, project_codes):
+        tokens = layout.project_path_contains.get(code)
+        if tokens:
+            return list(tokens)
+    return []
+
+
+def _path_matches(folder: str, tokens: list[str]) -> bool:
+    text = folder.lower()
+    return any(token.lower() in text for token in tokens if token.strip())
 
 
 def _doc_ref_headers_for(
@@ -340,7 +380,11 @@ def _header_index(headers: list[str], wanted: list[str]) -> int | None:
 
 
 def _looks_like_doc_ref(value: str) -> bool:
-    return bool(canonical_doc_ref(_doc_ref_from_cell(value)))
+    """True for an ISO 19650 drawing number, not a 4Projects portal id (R459-BGIT-9-000477)."""
+    if not value:
+        return False
+    parsed = parse_filename(value)
+    return bool(parsed.document_reference)
 
 
 def _looks_like_revision(value: str) -> bool:
@@ -481,6 +525,12 @@ def _map_headers(
             status = _header_index(headers, status_names)
         if status is not None:
             mapping["status"] = status
+    expire = _header_index(headers, layout.days_to_expire_headers)
+    if expire is not None:
+        mapping["days_to_expire"] = expire
+    path_col = _header_index(headers, layout.path_headers)
+    if path_col is not None:
+        mapping["path"] = path_col
     return mapping
 
 
@@ -493,6 +543,25 @@ def _cell_text(value: object) -> str:
     if text.endswith(".0") and text[:-2].isdigit():
         return text[:-2]
     return text
+
+
+def _days_to_expire_value(value: object) -> int | None:
+    """Portal listings store this as an int, often negative when already expired."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        if value != value:  # NaN
+            return None
+        return int(value)
+    text = _cell_text(value)
+    if not text:
+        return None
+    try:
+        return int(float(text))
+    except ValueError:
+        return None
 
 
 def _doc_ref_from_cell(value: str) -> str:
@@ -573,24 +642,38 @@ def load_document_list(
     )
     if mapping is None:
         return index
+    path_contains = _path_contains_for(layout, path, project_codes)
     for row in data_rows:
         if not row:
             continue
         raw_ref = _cell_text(row[mapping["doc_ref"]] if mapping["doc_ref"] < len(row) else "")
         revision = _cell_text(row[mapping["revision"]] if mapping["revision"] < len(row) else "")
-        revision = normalize_revision_token(revision) if revision else ""
+        revision = canonical_revision(revision) if revision else ""
         title = ""
         if "title" in mapping and mapping["title"] < len(row):
             title = _cell_text(row[mapping["title"]])
         status = ""
         if "status" in mapping and mapping["status"] < len(row):
             status = _cell_text(row[mapping["status"]])
+        days_to_expire = None
+        if "days_to_expire" in mapping and mapping["days_to_expire"] < len(row):
+            days_to_expire = _days_to_expire_value(row[mapping["days_to_expire"]])
+        if path_contains and "path" in mapping:
+            folder = _cell_text(row[mapping["path"]] if mapping["path"] < len(row) else "")
+            if not _path_matches(folder, path_contains):
+                continue
         doc_ref = canonical_doc_ref(_doc_ref_from_cell(raw_ref))
         if not doc_ref or not revision:
             continue
         if not parse_pc_revision(revision) and not is_revision_token(revision):
             continue
-        incoming = PortalDocument(doc_ref=doc_ref, revision=revision, title=title, status=status)
+        incoming = PortalDocument(
+            doc_ref=doc_ref,
+            revision=revision,
+            title=title,
+            status=status,
+            days_to_expire=days_to_expire,
+        )
         existing = index.by_ref.get(doc_ref)
         if existing is None or revision_rank(incoming.revision) > revision_rank(existing.revision):
             index.by_ref[doc_ref] = incoming
@@ -617,11 +700,27 @@ def _local_title(result: DocumentResult) -> str | None:
     return result.titleblock.title or result.filename.title
 
 
+def _same_revision(left: str | None, right: str | None) -> bool:
+    got = parse_pc_revision(left)
+    want = parse_pc_revision(right)
+    if got and want:
+        return got == want
+    a = normalize_revision_token(left or "") if left else ""
+    b = normalize_revision_token(right or "") if right else ""
+    return bool(a and b and a == b)
+
+
+def _revision_in_list(local: str | None, allowed: list[str]) -> bool:
+    return any(_same_revision(local, item) for item in allowed)
+
+
 def intended_upload_revision(
     portal_rev: str | None,
     local_rev: str | None,
     *,
     require_revision: str | None = None,
+    allow_same: bool = False,
+    extra_revisions: list[str] | None = None,
 ) -> str:
     """Revision we will upload after designer corrections.
 
@@ -629,11 +728,20 @@ def intended_upload_revision(
     If it is the same, skipped, or backwards (C01 on portal vs C03 on the drawing),
     use the next portal revision so document control is not asked to accept the wrong issue.
     When a project is upgrading P to C, require_revision (C01) wins.
+    QA Rejected files are replaced in place: same portal revision (or a project
+    extra such as P00) is the intended issue.
     """
+    extras = extra_revisions or []
     if require_revision:
         return require_revision
     if portal_rev and local_rev and is_successor_revision(portal_rev, local_rev):
         return local_rev
+    if allow_same and local_rev and _same_revision(portal_rev, local_rev):
+        return local_rev
+    if allow_same and local_rev and _revision_in_list(local_rev, extras):
+        return local_rev
+    if allow_same and portal_rev:
+        return portal_rev
     if portal_rev:
         return next_revision(portal_rev) or (local_rev or "")
     return local_rev or ""
@@ -715,10 +823,48 @@ def status_allows_upload(raw: str, layout: DocumentListLayout, project: str | No
     return False
 
 
+def status_is_replaceable(
+    raw: str, layout: DocumentListLayout, project: str | None
+) -> bool:
+    """True when internal QA rejected the file and it can be replaced in place."""
+    mapped = map_portal_status(raw, layout, project)
+    wanted = {_status_key(item) for item in layout.replaceable_statuses} or {
+        "qa rejected",
+        "qc rejected",
+    }
+    for candidate in (mapped, raw):
+        if _status_key(candidate or "") in wanted:
+            return True
+    return False
+
+
+def rejected_revisions_for(project: str | None, layout: DocumentListLayout) -> list[str]:
+    if not project:
+        return []
+    return list(layout.rejected_revisions.get(project.strip().upper(), []))
+
+
+def portal_revision_allowed(
+    portal_rev: str | None,
+    local_rev: str | None,
+    portal_status: str,
+    layout: DocumentListLayout,
+    project: str | None,
+) -> bool:
+    if is_successor_revision(portal_rev, local_rev):
+        return True
+    if not status_is_replaceable(portal_status, layout, project):
+        return False
+    if _same_revision(portal_rev, local_rev):
+        return True
+    return _revision_in_list(local_rev, rejected_revisions_for(project, layout))
+
+
 def blocked_uploads(results: list[DocumentResult]) -> list[DocumentResult]:
     """PDFs that cannot be uploaded until document control sets portal status A/B/C.
 
-    QA Approved is omitted: that workflow already allows a new revision.
+    QA Approved and QA Rejected are omitted: those workflows already allow a
+    new file (next issue, or a same-revision replace).
     """
     return [item for item in results if item.portal_blocks_upload]
 
@@ -768,6 +914,13 @@ def check_document_list(
         result.portal_revision = portal.revision
         result.portal_title = portal.title or None
         result.portal_status = portal.status or None
+        result.portal_days_to_expire = portal.days_to_expire
+        replaceable = index.has_status and status_is_replaceable(
+            portal.status, layout, project
+        )
+        result.portal_replaceable = replaceable
+        extras = rejected_revisions_for(project, layout)
+        result.portal_rejected_revisions = list(extras)
         upgrade = should_upgrade_to_construction(
             portal, layout, project, has_status=index.has_status
         )
@@ -778,9 +931,14 @@ def check_document_list(
             )
         else:
             result.proposed_upload_revision = intended_upload_revision(
-                portal.revision, local_rev
+                portal.revision,
+                local_rev,
+                allow_same=replaceable,
+                extra_revisions=extras,
             )
-        if index.has_status and not status_allows_upload(portal.status, layout, project):
+        if index.has_status and not (
+            status_allows_upload(portal.status, layout, project) or replaceable
+        ):
             result.portal_blocks_upload = True
         if upgrade is not None:
             if options.allows("portal-revision") and not _revision_matches(
@@ -792,19 +950,27 @@ def check_document_list(
                     f"so this file should be {upgrade.revision}, not {local_rev}"
                 )
                 record_issue(result, CheckStatus.PORTAL_REVISION)
-        elif (
-            options.allows("portal-revision")
-            and local_rev
-            and not is_successor_revision(portal.revision, local_rev)
+        elif options.allows("portal-revision") and local_rev and not portal_revision_allowed(
+            portal.revision, local_rev, portal.status, layout, project
         ):
-            nxt = next_revision(portal.revision)
-            extra = ""
-            if parse_pc_revision(portal.revision) and parse_pc_revision(portal.revision)[0] == "P":
-                extra = " (or C01 if this is the first construction issue)"
-            result.notes.append(
-                f"Portal list {source} has {doc_ref} at {portal.revision}; "
-                f"this file is {local_rev} (expected {nxt}{extra})"
-            )
+            if replaceable:
+                extras_note = ""
+                if extras:
+                    extras_note = f" (or {', '.join(extras)})"
+                result.notes.append(
+                    f"Portal list {source} has {doc_ref} at {portal.revision} "
+                    f"({portal.status or 'QA Rejected'}); this file can be the same "
+                    f"revision {portal.revision}{extras_note}, not {local_rev}"
+                )
+            else:
+                nxt = next_revision(portal.revision)
+                extra = ""
+                if parse_pc_revision(portal.revision) and parse_pc_revision(portal.revision)[0] == "P":
+                    extra = " (or C01 if this is the first construction issue)"
+                result.notes.append(
+                    f"Portal list {source} has {doc_ref} at {portal.revision}; "
+                    f"this file is {local_rev} (expected {nxt}{extra})"
+                )
             record_issue(result, CheckStatus.PORTAL_REVISION)
 
         local_title = _local_title(result)

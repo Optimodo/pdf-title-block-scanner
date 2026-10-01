@@ -14,6 +14,7 @@ DEFAULT_PURPOSE_REVIEW = ("S3",)
 DEFAULT_PURPOSE_CONSTRUCTION = (
     "A - Construction",
     "A - For Construction",
+    "Construction",
     "S4 - Construction",
     "S4 - For Construction",
     "S5 - Construction",

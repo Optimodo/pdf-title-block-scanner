@@ -54,7 +54,7 @@ def test_technical_abbreviations_not_flagged(tmp_path: Path, config_dir: Path):
     pdf = write_bottom_right_pdf(
         tmp_path / "ABC-WXY-ZZ-00-DR-A-0001-P01.pdf",
         document_reference="ABC-WXY-ZZ-00-DR-A-0001",
-        title="SVP RWP DHW Layout Mezzanine",  # All common abbreviations
+        title="SVP RWP IRS DHW Layout Mezzanine",  # All common abbreviations
         revision="P01",
     )
     result = check_pdf(pdf, load_config(config_dir))

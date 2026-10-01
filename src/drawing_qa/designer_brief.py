@@ -329,6 +329,17 @@ def _construction_upgrade_action(result: DocumentResult) -> str:
 
 def _portal_revision_action(result: DocumentResult) -> str:
     current = _quote(_current_revision(result))
+    if result.portal_replaceable and result.portal_revision:
+        extras = ""
+        extra_revs = [item for item in result.portal_rejected_revisions if item]
+        if extra_revs:
+            extras = f" {' or '.join(extra_revs)} is also allowed."
+        return (
+            f"The portal list has this drawing at {_quote(result.portal_revision)} "
+            f"as QA Rejected. Re-issue at the same revision "
+            f"{_quote(result.portal_revision)}.{extras} "
+            f"The drawing currently shows {current}."
+        )
     if result.portal_revision:
         nxt = next_revision(result.portal_revision) or "the next revision"
         extra = ""

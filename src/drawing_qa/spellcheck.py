@@ -29,6 +29,7 @@ def get_mep_construction_terms() -> set[str]:
         # === Plumbing / Drainage ===
         "svp",  # Soil Vent Pipe
         "rwp",  # Rain Water Pipe
+        "irs",  # Internal Rainwater System
         "cwp",  # Cold Water Pipe
         "hwp",  # Hot Water Pipe
         "dhw",  # Domestic Hot Water

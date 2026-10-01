@@ -264,9 +264,12 @@ class DocumentResult:
     portal_list_name: str = ""
     portal_first_revisions: list[str] = field(default_factory=list)
     portal_status: str | None = None
+    portal_days_to_expire: int | None = None
     portal_has_status_column: bool = False
     portal_csv_row_cap_hit: bool = False
     portal_blocks_upload: bool = False
+    portal_replaceable: bool = False
+    portal_rejected_revisions: list[str] = field(default_factory=list)
     proposed_upload_revision: str | None = None
     construction_upgrade_required: bool = False
     allowed_clients: list[str] = field(default_factory=list)

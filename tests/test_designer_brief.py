@@ -437,6 +437,22 @@ def test_portal_revision_tells_designer_the_next_issue():
     assert "C01" in text
 
 
+def test_qa_rejected_tells_designer_to_reissue_same_revision():
+    result = _base(filename_rev="C03", titleblock_rev="C03")
+    result.status = CheckStatus.PORTAL_REVISION
+    result.issues = [CheckStatus.PORTAL_REVISION]
+    result.portal_revision = "C02"
+    result.portal_status = "QA Rejected"
+    result.portal_replaceable = True
+    result.portal_rejected_revisions = ["P00"]
+    text = designer_actions(result)
+    assert "QA Rejected" in text
+    assert "same revision" in text.lower()
+    assert "'C02'" in text
+    assert "P00" in text
+    assert "currently shows 'C03'" in text
+
+
 def test_portal_missing_drawing_uses_first_issue():
     result = _base(filename_rev="P02", titleblock_rev="P02")
     result.status = CheckStatus.PORTAL_REVISION

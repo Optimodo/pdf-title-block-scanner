@@ -649,7 +649,8 @@ def _wrapped_line_count(text: str, col_width: float) -> int:
 def _designer_row_height(values: list[object], widths: list[float]) -> float:
     lines = 1
     for value, width in zip(values, widths, strict=True):
-        lines = max(lines, _wrapped_line_count(str(value or ""), width))
+        text = "" if value is None else str(value)
+        lines = max(lines, _wrapped_line_count(text, width))
     return min(max(18, lines * 14.5 + 4), 180)
 
 
@@ -788,15 +789,15 @@ def write_designer_text_report(results: list[DocumentResult], output: Path) -> P
 
 
 DOCCONTROL_COLUMNS = [
-    ("Drawing number", 38),
-    ("Title", 48),
-    ("Current revision", 16),
-    ("Proposed revision", 18),
-    ("Current portal status", 36),
-    ("Please change to", 16),
+    ("Drawing number", 29),
+    ("Title", 36),
+    ("Current revision", 10),
+    ("Proposed revision", 11),
+    ("Current portal status", 28),
+    ("Days to expire", 12),
 ]
 DOCCONTROL_HEADER_ROW = 7
-DOCCONTROL_PLEASE_CHANGE = "A, B, or C"
+DOCCONTROL_HEADER_HEIGHT = 36
 
 
 def _document_control_needed(results: list[DocumentResult]) -> list[DocumentResult]:
@@ -853,9 +854,9 @@ def _write_document_control_sheet(
     note = ws.cell(
         5,
         1,
-        "These drawings cannot be uploaded until the portal status is A, B, or C "
-        "so the current issue can be superseded. Proposed revision is the next issue "
-        "after the current portal revision, after any designer corrections.",
+        "These drawings cannot be uploaded on the current portal status. "
+        "Proposed revision is the next issue after the current portal revision, "
+        "after any designer corrections.",
     )
     note.font = BODY_FONT
     note.alignment = Alignment(wrap_text=True, vertical="center")
@@ -866,7 +867,7 @@ def _write_document_control_sheet(
     header_row = DOCCONTROL_HEADER_ROW
     for col, (name, _width) in enumerate(DOCCONTROL_COLUMNS, start=1):
         _apply_designer_cell(ws.cell(header_row, col, name), header=True)
-    ws.row_dimensions[header_row].height = 22
+    ws.row_dimensions[header_row].height = DOCCONTROL_HEADER_HEIGHT
     ws.freeze_panes = f"A{header_row + 1}"
 
     if not blocked:
@@ -880,6 +881,7 @@ def _write_document_control_sheet(
 
     for offset, result in enumerate(blocked):
         row_idx = header_row + 1 + offset
+        days = result.portal_days_to_expire
         values = [
             designer_doc_ref(result),
             designer_title(result),
@@ -889,7 +891,7 @@ def _write_document_control_sheet(
             or result.filename.revision
             or "",
             result.portal_status or "(blank)",
-            DOCCONTROL_PLEASE_CHANGE,
+            days if days is not None else "",
         ]
         for col, value in enumerate(values, start=1):
             cell = ws.cell(row_idx, col, value)

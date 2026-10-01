@@ -125,6 +125,7 @@ def test_bundled_config_loads_iso_list(config_dir: Path):
     assert config.suitability_check.purpose_review == ["S3"]
     assert "S5 - Construction" in config.suitability_check.purpose_construction
     assert "S4 - For Construction" in config.suitability_check.purpose_construction
+    assert "Construction" in config.suitability_check.purpose_construction
     assert "R459" in config.suitability_check.projects
     assert "S5 - For Construction" in config.suitability_check.projects["R459"]
     assert "A - Contractual" in config.suitability_check.projects["R459"]
@@ -157,7 +158,8 @@ def test_bundled_config_loads_iso_list(config_dir: Path):
     assert config.suitability_check.suggested == config.suitability_check.projects["R459"]
     assert "HPA" in config.suitability_check.projects
     assert config.suitability_check.project_names["HPA"] == "Holloway Park"
-    assert config.suitability_check.projects["HPA"] == config.suitability_check.projects["R459"]
+    assert "Construction" in config.suitability_check.projects["HPA"]
+    assert config.suitability_check.projects["HPA"][1:] == config.suitability_check.projects["R459"]
 
 
 def test_barking_riverside_uses_project_dropdown(tmp_path: Path, config_dir: Path):
@@ -191,7 +193,22 @@ def test_hpa_uses_standard_purpose_whitelist(tmp_path: Path, config_dir: Path):
     assert CheckStatus.SUITABILITY_ERROR not in result.issues
     assert result.purpose_list_official is True
     assert result.purpose_list_name == "Holloway Park"
-    assert result.designer_purpose_values == config.suitability_check.projects["R459"]
+    assert result.designer_purpose_values[0] == "Construction"
+    assert result.designer_purpose_values[1:] == config.suitability_check.projects["R459"]
+
+
+def test_hpa_accepts_construction_purpose(tmp_path: Path, config_dir: Path):
+    pdf = write_bottom_right_pdf(
+        tmp_path / "HPA-MBS-D3-LG-DR-X-55103-C01.pdf",
+        document_reference="HPA-MBS-D3-LG-DR-X-55103",
+        title="Lighting layout",
+        revision="C01",
+        suitability="Construction",
+        client="London Square",
+    )
+    result = check_pdf(pdf, load_config(config_dir))
+    assert CheckStatus.SUITABILITY_ERROR not in result.issues
+    assert CheckStatus.PURPOSE_MISMATCH not in result.issues
 
 
 def test_wcr_uses_construction_purpose_whitelist(tmp_path: Path, config_dir: Path):
@@ -276,6 +293,7 @@ def test_purpose_families():
     assert suitability_purpose_family("S3") == "review"
     assert suitability_purpose_family("S5 - Construction") == "construction"
     assert suitability_purpose_family("A - FOR CONSTRUCTION") == "construction"
+    assert suitability_purpose_family("Construction") == "construction"
     assert suitability_purpose_family("S2 - Suitable for tender") is None
     assert suitability_purpose_family("S4 - Suitable for building control approval") is None
     assert suitability_purpose_family("S4 - Stage approval") is None

@@ -27,7 +27,8 @@ prefer_name_contains:
 # Tried in order when locating columns on a header row.
 # Default is Oval C+D 4Projects: ISO number in Original Doc Ref (Non-Standard).
 # Trillium and West Cromwell Road also use 4Projects but store the number in
-# Name (column A). Holloway Park DocHosting uses Title; Barking Asite uses Doc Ref.
+# Name (column A). Holloway Park DocHosting uses Drawing/Document (or Title on
+# older dumps); Barking Asite uses Doc Ref.
 # 4Projects CSV uses the same header names as Excel. CSV downloads cap at 500
 # rows — prefer Excel when both are present, and warn when a CSV has exactly 500
 # documents. Set doc_ref on those projects below.
@@ -36,6 +37,7 @@ headers:
     - Original Doc Ref (Non-Standard)
     - Doc Ref
     - Name
+    - Drawing/Document
     - Title
   doc_title:
     - Description
@@ -44,6 +46,8 @@ headers:
   revision:
     - Revision
     - Rev
+  path:
+    - Project Folder
   # 4Projects uses Revision Workflow; Asite / DocHosting use Status.
   # Revision Workflow is listed first because 4Projects also has a Status column
   # that is purpose of issue. Asite also has Workflow Status (RUNNING/COMPLETED);
@@ -53,6 +57,10 @@ headers:
     - Workflow State
     - Workflow Status
     - Status
+  days_to_expire:
+    - Days To Expire
+    - Days to Expire
+    - Days To Expiry
 
 # Portal wordings that mean the current issue can be superseded.
 # A/B/C are client statuses. QA Approved is internal QA done — the issue
@@ -65,6 +73,13 @@ uploadable_statuses:
   - B
   - C
   - QA Approved
+
+# Internal QA rejected the file. It can be replaced in place (same revision,
+# or a project extra such as Trillium P00). Document control is not asked
+# to change the status.
+replaceable_statuses:
+  - QA Rejected
+  - QC Rejected
 
 # Raw portal / workflow text -> Status A/B/C (or other). Keys are matched
 # case-insensitively. Project maps below are merged on top of this list.
@@ -129,6 +144,8 @@ projects:
     search_keys: [Tril, Trillium]
     first_revisions: [P01]
     doc_ref: Name
+    # QA Rejected re-uploads may keep the portal revision or use P00.
+    rejected_revisions: [P00]
   WCR:
     name: West Cromwell Road
     search_keys: [WCR]
@@ -138,8 +155,13 @@ projects:
     name: Holloway Park
     search_keys: [HP, HPA]
     first_revisions: [P01]
-    doc_ref: Title
+    doc_ref:
+      - Drawing/Document
+      - Title
     doc_title: Description
+    # DocHosting exports every contractor. Keep only Malcolm's folder tree.
+    path_contains:
+      - Malcolm
     status_map:
       Construction: Status A
       IFC-pending: Under Review

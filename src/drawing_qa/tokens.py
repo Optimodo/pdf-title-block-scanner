@@ -156,6 +156,15 @@ def format_pc_revision(series: str, number: int) -> str:
     return f"{series}{number:02d}"
 
 
+def canonical_revision(value: str | None) -> str:
+    """Uppercase a revision and pad ISO P/C issues (C1 → C01, P2 → P02)."""
+    token = normalize_revision_token(value or "")
+    parsed = parse_pc_revision(token)
+    if parsed:
+        return format_pc_revision(*parsed)
+    return token
+
+
 def next_revision(value: str | None) -> str | None:
     parsed = parse_pc_revision(value)
     if not parsed:

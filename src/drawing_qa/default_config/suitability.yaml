@@ -27,6 +27,7 @@ purpose:
   construction:
     - A - Construction
     - A - For Construction
+    - Construction
     - S4 - Construction
     - S4 - For Construction
     - S5 - Construction
@@ -197,6 +198,7 @@ projects:
   HPA:
     name: Holloway Park
     values:
+      - Construction
       - A - Contractual
       - AB - As Builts
       - D2 - For Tender

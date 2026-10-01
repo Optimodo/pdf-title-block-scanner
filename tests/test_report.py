@@ -107,11 +107,14 @@ def test_write_report_writes_document_control_sidecar(tmp_path: Path):
     result.portal_blocks_upload = True
     result.portal_revision = "P01"
     result.portal_status = "Pending QA Check"
+    result.portal_days_to_expire = -27
     result.titleblock.revision = "P02"
     output = write_report([result], tmp_path / "full.xlsx")
     control = document_control_report_path(output)
     assert control.is_file()
     from openpyxl import load_workbook
+    from openpyxl.utils import get_column_letter
+    from drawing_qa.report import DOCCONTROL_COLUMNS, DOCCONTROL_HEADER_HEIGHT
 
     sheet = load_workbook(control).active
     assert sheet.title == "Document control"
@@ -120,16 +123,26 @@ def test_write_report_writes_document_control_sidecar(tmp_path: Path):
     assert sheet["B4"].value == 1
     assert sheet["A6"].value is None or sheet["A6"].value == ""
     assert sheet.cell(DOCCONTROL_HEADER_ROW, 1).value == "Drawing number"
+    assert sheet.cell(DOCCONTROL_HEADER_ROW, 6).value == "Days to expire"
+    assert sheet.cell(DOCCONTROL_HEADER_ROW, 6).alignment.wrap_text is True
+    assert sheet.row_dimensions[DOCCONTROL_HEADER_ROW].height == DOCCONTROL_HEADER_HEIGHT
     data = DOCCONTROL_HEADER_ROW + 1
     assert sheet.cell(data, 1).value == "R459-WXY-ZZ-00-DR-A-0001"
     assert sheet.cell(data, 2).value == "Ground Floor GA"
     assert sheet.cell(data, 3).value == "P01"
     assert sheet.cell(data, 4).value == "P02"
     assert sheet.cell(data, 5).value == "Pending QA Check"
-    assert sheet.cell(data, 6).value == "A, B, or C"
+    assert sheet.cell(data, 6).value == -27
+    assert sheet.cell(data, 7).value is None
     assert sheet.cell(DOCCONTROL_HEADER_ROW, 1).alignment.horizontal == "center"
     assert sheet.cell(data, 1).alignment.horizontal == "center"
     assert sheet.cell(data, 4).alignment.horizontal == "center"
+    widths = [
+        sheet.column_dimensions[get_column_letter(col)].width
+        for col, _name in enumerate(DOCCONTROL_COLUMNS, start=1)
+    ]
+    assert widths == [width for _name, width in DOCCONTROL_COLUMNS]
+    assert sum(widths) <= 130
 
 
 def test_write_report_skips_document_control_when_nothing_to_action(tmp_path: Path):

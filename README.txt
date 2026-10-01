@@ -124,6 +124,9 @@ QA-TB-Comments-Organiser to copy only those files into Sorted.
 
     - Revisions: the issue on the drawing should be the next one after
       the portal (for example portal C01, this drawing C02).
+    - QA Rejected: the file can be replaced at the same revision (usual
+      on WCR). Trillium also allows P00. Document control is not asked
+      to change that status.
     - Titles: the title on the drawing should match the title on the
       portal.
 

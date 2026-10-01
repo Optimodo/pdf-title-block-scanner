@@ -162,6 +162,55 @@ def test_oval_prefers_original_doc_ref_when_name_also_has_a_number(tmp_path: Pat
     assert index.get("R459-MBS-DZ-ZZ-DR-W-99999") is None
 
 
+def test_oval_uses_original_doc_ref_when_name_is_a_portal_id(tmp_path: Path):
+    """OVD/OVCD 4Projects: Name is always filled (R459-BGIT-…); ISO numbers sit in Original Doc Ref."""
+    wb = Workbook()
+    ws = wb.active
+    ws.append(
+        [
+            "Name",
+            "Description",
+            "Revision",
+            "Original Doc Ref (Non-Standard)",
+            "Revision Workflow",
+        ]
+    )
+    for index, (portal_id, iso, title) in enumerate(
+        [
+            ("R459-BGIT-9-000358", "R459-MBS-DZ-ZZ-DR-W-51391", "Ventilation"),
+            ("R459-BGIT-9-000359", "R459-MBS-DZ-ZZ-DR-W-51392", "Pipework"),
+            ("R459-BGIT-9-000360", "R459-MBS-DZ-ZZ-DR-W-51413", "Ventilation 2"),
+            ("R459-BGIT-6-107701", "", "No original ref"),
+            ("R459-BGIT-9-000361", "R459-MBS-DZ-ZZ-DR-W-60029", "Electrical"),
+        ],
+        start=1,
+    ):
+        ws.append([portal_id, title, "P01", iso, "QA Approved"])
+    path = tmp_path / "OVD Document Listing.xlsx"
+    wb.save(path)
+    index = load_document_list(path, _layout())
+    assert index.get("R459-MBS-DZ-ZZ-DR-W-51391") is not None
+    assert index.get("R459-MBS-DZ-ZZ-DR-W-51392") is not None
+    assert index.get("R459-MBS-DZ-ZZ-DR-W-51413") is not None
+    assert index.get("R459-MBS-DZ-ZZ-DR-W-60029") is not None
+    assert index.get("R459-BGIT-9-000358") is None
+    result = check_document_list(
+        [
+            _drawing(
+                project="R459",
+                revision="P02",
+                doc_ref="R459-MBS-DZ-ZZ-DR-W-51391",
+                title="Ventilation",
+            )
+        ],
+        index,
+        _layout(),
+    )[0]
+    finalize_status(result)
+    assert result.portal_revision == "P01"
+    assert CheckStatus.PORTAL_REVISION not in result.issues
+
+
 def _write_4projects_name_listing(
     path: Path, doc_ref: str, title: str, revision: str = "P01"
 ) -> Path:
@@ -403,23 +452,54 @@ def test_load_dochosting_csv(tmp_path: Path):
 
 
 def test_holloway_uses_title_and_description_not_subject(tmp_path: Path):
-    """DocHosting HP dump: Title is the ISO number, Description is the drawing title."""
+    """Older DocHosting HP dump: Title is the ISO number, Description is the drawing title."""
     path = tmp_path / "HP Document Listing 070926.csv"
     path.write_text(
         "Report Created,Project Folder,Title,Subject,Description,Status,Rev,Date\n"
-        "06-09-2026,/ACAD_Services,HPA-MBS-C1-ZZ-SM-X-52007,Schematics,"
+        "06-09-2026,/Trade_Contractor/Mechanical_(Malcolm)/Block_C/01_Mechanical_schematics,"
+        "HPA-MBS-C1-ZZ-SM-X-52007,Schematics,"
         "Block C1 LTHW M-BUS schematic,Construction,C1,13-Aug-25\n",
         encoding="utf-8",
     )
     index = load_document_list(path, _layout())
     row = index.get("HPA-MBS-C1-ZZ-SM-X-52007")
     assert row is not None
-    assert row.revision == "C1"
+    assert row.revision == "C01"
     assert row.title == "Block C1 LTHW M-BUS schematic"
     assert row.status == "Construction"
     from drawing_qa.document_list import status_allows_upload
 
     assert status_allows_upload(row.status, _layout(), "HPA")
+
+
+def test_holloway_drawing_document_keeps_malcolm_folders_and_pads_rev(tmp_path: Path):
+    """Current DocHosting dump: Drawing/Document, unpadded P1/C1, every contractor."""
+    path = tmp_path / "HP Document Listing 021026.csv"
+    path.write_text(
+        "Report Created,Project Folder,Drawing/Document,Subject,Description,Status,Rev,Date,T.I.\n"
+        ",/ACAD_Services,HPA-ACA-ALL-XX-DR-E-10700,Underground Services,"
+        "LV AND HV LAYOUT,Construction,C6,13-Aug-25,y\n"
+        ",/Trade_Contractor/Mechanical_(Malcolm)/Block_D/04_Public_health_layouts,"
+        "HPA-MBS-D1-00-DR-W-55101,Public Health,Apartment IRS Layout,Construction,C1,13-Aug-25,y\n"
+        ",/Trade_Contractor/Mechanical_(Malcolm)/Block_C/01_Mechanical_schematics,"
+        "HPA-MBS-C1-ZZ-SM-X-52007,Schematics,Block C1 LTHW schematic,IFC-pending,P1,01-Oct-26,y\n"
+        ",/Trade_Contractor/Kitchens_(Nolte)/Private/Block_D,"
+        "HPA-NLT-D1-00-DR-K-01001,Kitchens,Kitchen layout,Construction,C2,13-Aug-25,y\n",
+        encoding="utf-8",
+    )
+    index = load_document_list(path, _layout())
+    assert index.get("HPA-ACA-ALL-XX-DR-E-10700") is None
+    assert index.get("HPA-NLT-D1-00-DR-K-01001") is None
+    irs = index.get("HPA-MBS-D1-00-DR-W-55101")
+    schematic = index.get("HPA-MBS-C1-ZZ-SM-X-52007")
+    assert irs is not None
+    assert irs.revision == "C01"
+    assert irs.title == "Apartment IRS Layout"
+    assert irs.status == "Construction"
+    assert schematic is not None
+    assert schematic.revision == "P01"
+    assert schematic.status == "IFC-pending"
+    assert len(index.by_ref) == 2
 
 
 def test_barking_uses_asite_status_not_workflow_status(tmp_path: Path):
@@ -697,6 +777,42 @@ def test_status_allows_upload_uses_project_wordings():
     assert not status_allows_upload("Pending QA Check", layout, "R459")
     assert not status_allows_upload("QA Rejected", layout, "R459")
     assert not status_allows_upload("", layout, "R459")
+    from drawing_qa.document_list import status_is_replaceable
+
+    assert status_is_replaceable("QA Rejected", layout, "WCR")
+    assert status_is_replaceable("QC Rejected", layout, "R456")
+    assert not status_is_replaceable("Pending QA Check", layout, "WCR")
+
+
+def test_loads_days_to_expire_including_negatives(tmp_path: Path):
+    path = _write_excel(
+        tmp_path / "OVD Document Listing.xlsx",
+        [
+            ("R459-MBS-DZ-ZZ-DR-W-0001", "Plant", "P01", "Pending QA Check", -27),
+            ("R459-MBS-DZ-ZZ-DR-W-0002", "Roof", "P02", "Pending QA Check", 0),
+            ("R459-MBS-DZ-ZZ-DR-W-0003", "Core", "P01", "Pending QA Check", 6),
+        ],
+        headers=[
+            "Original Doc Ref (Non-Standard)",
+            "Description",
+            "Revision",
+            "Revision Workflow",
+            "Days To Expire",
+        ],
+    )
+    index = load_document_list(path, _layout())
+    expired = index.get("R459-MBS-DZ-ZZ-DR-W-0001")
+    zero = index.get("R459-MBS-DZ-ZZ-DR-W-0002")
+    upcoming = index.get("R459-MBS-DZ-ZZ-DR-W-0003")
+    assert expired is not None and expired.days_to_expire == -27
+    assert zero is not None and zero.days_to_expire == 0
+    assert upcoming is not None and upcoming.days_to_expire == 6
+    result = check_document_list(
+        [_drawing(project="R459", number="0001", revision="P02", doc_ref="R459-MBS-DZ-ZZ-DR-W-0001")],
+        index,
+        _layout(),
+    )[0]
+    assert result.portal_days_to_expire == -27
 
 
 def test_prefers_revision_workflow_over_purpose_status_column(tmp_path: Path):
@@ -752,6 +868,108 @@ def test_blocks_upload_when_portal_status_is_not_abc():
     qa_ok = check_document_list([_drawing(revision="P02")], index, layout)[0]
     assert not qa_ok.portal_blocks_upload
 
+    index.by_ref["ABC-WXY-ZZ-00-DR-A-0001"].status = "QA Rejected"
+    rejected = check_document_list([_drawing(revision="P01")], index, layout)[0]
+    assert not rejected.portal_blocks_upload
+    assert rejected.portal_replaceable
+    assert CheckStatus.PORTAL_REVISION not in rejected.issues
+    assert rejected.proposed_upload_revision == "P01"
+
+
+def test_qa_rejected_allows_same_revision_and_trillium_p00():
+    layout = _layout()
+    assert layout.rejected_revisions.get("R456") == ["P00"]
+    index = DocumentListIndex(
+        path=Path("WCR Document Listing.xlsx"),
+        has_status=True,
+        by_ref={
+            "WCR-MBS-B1-02-DR-E-6002": PortalDocument(
+                "WCR-MBS-B1-02-DR-E-6002",
+                "C02",
+                "Electrical",
+                "QA Rejected",
+            )
+        },
+    )
+    same = check_document_list(
+        [
+            _drawing(
+                project="WCR",
+                revision="C02",
+                doc_ref="WCR-MBS-B1-02-DR-E-6002",
+                title="Electrical",
+            )
+        ],
+        index,
+        layout,
+    )[0]
+    finalize_status(same)
+    assert same.portal_replaceable
+    assert not same.portal_blocks_upload
+    assert CheckStatus.PORTAL_REVISION not in same.issues
+    assert same.proposed_upload_revision == "C02"
+
+    bumped = check_document_list(
+        [
+            _drawing(
+                project="WCR",
+                revision="C03",
+                doc_ref="WCR-MBS-B1-02-DR-E-6002",
+                title="Electrical",
+            )
+        ],
+        index,
+        layout,
+    )[0]
+    finalize_status(bumped)
+    assert CheckStatus.PORTAL_REVISION not in bumped.issues
+
+    back = check_document_list(
+        [
+            _drawing(
+                project="WCR",
+                revision="C01",
+                doc_ref="WCR-MBS-B1-02-DR-E-6002",
+                title="Electrical",
+            )
+        ],
+        index,
+        layout,
+    )[0]
+    finalize_status(back)
+    assert CheckStatus.PORTAL_REVISION in back.issues
+    assert back.proposed_upload_revision == "C02"
+    assert "same revision" in " ".join(back.notes)
+
+    tril = DocumentListIndex(
+        path=Path("Tril Document Listing.xlsx"),
+        has_status=True,
+        by_ref={
+            "R456-MAL20-BI-ZZ-DR-W-605-001": PortalDocument(
+                "R456-MAL20-BI-ZZ-DR-W-605-001",
+                "P01",
+                "Combined Services",
+                "QA Rejected",
+            )
+        },
+    )
+    p00 = check_document_list(
+        [
+            _drawing(
+                project="R456",
+                revision="P00",
+                doc_ref="R456-MAL20-BI-ZZ-DR-W-605-001",
+                title="Combined Services",
+            )
+        ],
+        tril,
+        layout,
+    )[0]
+    finalize_status(p00)
+    assert CheckStatus.PORTAL_REVISION not in p00.issues
+    assert p00.proposed_upload_revision == "P00"
+    assert p00.portal_rejected_revisions == ["P00"]
+
 
 def test_new_portal_drawing_is_not_an_upload_block():
     layout = _layout()
@@ -769,6 +987,9 @@ def test_intended_upload_revision_ignores_skipped_drawing_rev():
     assert intended_upload_revision("P01", "C01") == "C01"
     assert intended_upload_revision("P01", "P02") == "P02"
     assert intended_upload_revision("P01", "P01") == "P02"
+    assert intended_upload_revision("C02", "C02", allow_same=True) == "C02"
+    assert intended_upload_revision("P01", "P00", allow_same=True, extra_revisions=["P00"]) == "P00"
+    assert intended_upload_revision("C02", "C01", allow_same=True) == "C02"
 
 
 def test_check_sets_proposed_upload_to_next_portal_issue():
