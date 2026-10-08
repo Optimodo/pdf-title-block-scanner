@@ -82,11 +82,7 @@ def test_write_report_also_writes_designer_sidecar(tmp_path: Path):
     assert sheet.cell(DESIGNER_HEADER_ROW, 1).value == "Drawing number"
     assert sheet.cell(DESIGNER_HEADER_ROW + 1, 1).value == "R459-WXY-ZZ-00-DR-A-0001"
     assert main["Designer actions"]["A1"].value == sheet["A1"].value
-    text_side = designer_text_report_path(output)
-    assert text_side.is_file()
-    text = text_side.read_text(encoding="utf-8")
-    assert text.startswith("R459-WXY-ZZ-00-DR-A-0001\n")
-    assert "Ground Floor GA" in text
+    assert not designer_text_report_path(output).is_file()
     assert not document_control_report_path(output).is_file()
 
 
@@ -151,6 +147,22 @@ def test_write_report_skips_document_control_when_nothing_to_action(tmp_path: Pa
     result.portal_has_status_column = True
     result.portal_blocks_upload = False
     result.portal_status = "QA Approved"
+    output = write_report([result], tmp_path / "full.xlsx")
+    from openpyxl import load_workbook
+
+    assert "Document control" not in load_workbook(output).sheetnames
+    assert not document_control_report_path(output).is_file()
+
+
+def test_write_report_skips_document_control_for_barking_riverside(tmp_path: Path):
+    result = _result(project="J106309", name="Barking Riverside", confidence=Confidence.HIGH)
+    result.portal_list_name = "BR Document Listing.xlsx"
+    result.portal_has_status_column = True
+    result.portal_blocks_upload = True
+    result.document_control_report = False
+    result.portal_revision = "P01"
+    result.portal_status = "For Status Change"
+    result.titleblock.revision = "P02"
     output = write_report([result], tmp_path / "full.xlsx")
     from openpyxl import load_workbook
 

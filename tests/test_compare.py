@@ -96,6 +96,26 @@ def test_hyphen_and_plural_titles_are_equivalent():
         "B4 Drainage SVP Schematic - Sheet 3 of 3",
         "B4 - Drainage SVP Schematic - Sheet 2 of 3",
     )
+
+
+def test_missing_space_titles_are_equivalent():
+    assert titles_equivalent(
+        "Apartment Type D1.10.5 Sprinkler Setting OutLayout",
+        "Apartment Type D1.10.5 Sprinkler Setting Out Layout",
+    )
+    assert titles_equivalent(
+        "BLOCK D APARTMENT TYPE D1.9.3MECHANICAL PIPEWORK LAYOUT",
+        "BLOCK D APARTMENT TYPE D1.9.3 MECHANICAL PIPEWORK LAYOUT",
+    )
+    assert titles_equivalent("Plantroom Layout", "Plant Room Layout")
+    assert not titles_equivalent(
+        "Apartment Type D1.10.3 Sprinkler Setting OutLayout",
+        "Apartment Type 1.10.3 Sprinkler Setting Out Layout",
+    )
+    assert not titles_equivalent(
+        "Block D Electrical Layout - Apartment Type D1.8.3",
+        "Block D Electrical Layout - Apartment Type D1.8.4",
+    )
     filename = FilenameFields(
         raw_stem="x",
         document_reference="WCR-MBS-B4-ZZ-SC-PH-5201",

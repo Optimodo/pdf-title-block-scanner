@@ -23,7 +23,6 @@ from drawing_qa.dwg_pairing import find_dwg_files, unpaired_dwgs
 from drawing_qa.models import CheckStatus, Confidence, DocumentResult
 from drawing_qa.paths import (
     designer_report_path,
-    designer_text_report_path,
     document_control_report_path,
     next_available_paired_report_path,
     sanitize_filename_part,
@@ -804,7 +803,11 @@ def _document_control_needed(results: list[DocumentResult]) -> list[DocumentResu
     """Drawings that document control must action. Empty means no sheet or sidecar."""
     if not any(item.portal_has_status_column for item in results):
         return []
-    return blocked_uploads(results)
+    return [
+        item
+        for item in blocked_uploads(results)
+        if item.document_control_report
+    ]
 
 
 def write_document_control_report(
@@ -936,6 +939,5 @@ def write_report(results: list[DocumentResult], output: Path) -> Path:
     with timing_span("report_save"):
         wb.save(output)
         write_designer_report(results, designer_report_path(output))
-        write_designer_text_report(results, designer_text_report_path(output))
         write_document_control_report(results, document_control_report_path(output))
     return output

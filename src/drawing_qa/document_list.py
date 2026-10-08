@@ -60,6 +60,7 @@ class DocumentListLayout:
     project_title_headers: dict[str, list[str]] = field(default_factory=dict)
     project_status_headers: dict[str, list[str]] = field(default_factory=dict)
     project_path_contains: dict[str, list[str]] = field(default_factory=dict)
+    skip_document_control: list[str] = field(default_factory=list)
     enabled: bool = True
 
 
@@ -115,6 +116,7 @@ def load_document_list_layout(raw: dict | None) -> DocumentListLayout:
     project_status_hdr: dict[str, list[str]] = {}
     rejected_revs: dict[str, list[str]] = {}
     project_path_contains: dict[str, list[str]] = {}
+    skip_document_control: list[str] = []
     default_doc_ref = _string_list(headers.get("doc_ref"))
     default_title = _string_list(headers.get("doc_title"))
     default_status = _string_list(headers.get("status"))
@@ -160,6 +162,8 @@ def load_document_list_layout(raw: dict | None) -> DocumentListLayout:
         path_contains = _string_list(spec.get("path_contains"))
         if path_contains:
             project_path_contains[project] = path_contains
+        if "document_control" in spec and not bool(spec.get("document_control")):
+            skip_document_control.append(project)
     return DocumentListLayout(
         enabled=bool(data.get("enabled", True)),
         doc_ref_headers=default_doc_ref,
@@ -185,6 +189,7 @@ def load_document_list_layout(raw: dict | None) -> DocumentListLayout:
         project_title_headers=project_title,
         project_status_headers=project_status_hdr,
         project_path_contains=project_path_contains,
+        skip_document_control=skip_document_control,
     )
 
 
@@ -680,6 +685,14 @@ def load_document_list(
     return index
 
 
+def skips_document_control(project: str | None, layout: DocumentListLayout) -> bool:
+    """True when the CDE accepts a new file at any workflow status (Asite)."""
+    if not project:
+        return False
+    code = project.strip().upper()
+    return code in {item.upper() for item in layout.skip_document_control}
+
+
 def first_revisions_for(project: str | None, layout: DocumentListLayout) -> list[str]:
     if project:
         listed = layout.first_revisions.get(project.strip().upper())
@@ -895,6 +908,8 @@ def check_document_list(
         allowed_first = first_revisions_for(project, layout)
         result.portal_first_revisions = allowed_first
         result.portal_has_status_column = index.has_status
+        if skips_document_control(project, layout):
+            result.document_control_report = False
         portal = index.get(doc_ref)
         if portal is None:
             if not local_rev:
@@ -936,8 +951,12 @@ def check_document_list(
                 allow_same=replaceable,
                 extra_revisions=extras,
             )
-        if index.has_status and not (
-            status_allows_upload(portal.status, layout, project) or replaceable
+        if (
+            result.document_control_report
+            and index.has_status
+            and not (
+                status_allows_upload(portal.status, layout, project) or replaceable
+            )
         ):
             result.portal_blocks_upload = True
         if upgrade is not None:

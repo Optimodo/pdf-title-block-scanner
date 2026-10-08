@@ -77,7 +77,11 @@ def _stem_title_token(token: str) -> str:
 
 
 def titles_equivalent(left: str | None, right: str | None) -> bool:
-    """True when titles match after spacing, hyphens, and simple English plurals."""
+    """True when titles match after spacing, hyphens, and simple English plurals.
+
+    A missing space (often a wrapped line on the portal dump) is ignored, so
+    ``OutLayout`` matches ``Out Layout``. Different numbers or letters still fail.
+    """
     a, b = normalize_title(left), normalize_title(right)
     if a is None and b is None:
         return True
@@ -85,9 +89,11 @@ def titles_equivalent(left: str | None, right: str | None) -> bool:
         return False
     if a == b:
         return True
-    return [_stem_title_token(t) for t in a.split()] == [
-        _stem_title_token(t) for t in b.split()
-    ]
+    stemmed_a = [_stem_title_token(t) for t in a.split()]
+    stemmed_b = [_stem_title_token(t) for t in b.split()]
+    if stemmed_a == stemmed_b:
+        return True
+    return "".join(stemmed_a) == "".join(stemmed_b)
 
 
 def _compare_title(left: str | None, right: str | None) -> tuple[bool | None, str]:

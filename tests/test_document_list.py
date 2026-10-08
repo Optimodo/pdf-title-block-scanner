@@ -547,6 +547,32 @@ def test_barking_uses_asite_status_not_workflow_status(tmp_path: Path):
     assert status_allows_upload(allowed.status, layout, "J106309")
 
 
+def test_barking_does_not_block_upload_for_document_control():
+    from drawing_qa.document_list import skips_document_control
+
+    layout = _layout()
+    assert skips_document_control("J106309", layout)
+    assert not skips_document_control("R459", layout)
+    index = DocumentListIndex(
+        path=Path("BR Document Listing.xlsx"),
+        has_status=True,
+        by_ref={
+            "J106309-WXY-ZZ-00-DR-A-0001": PortalDocument(
+                "J106309-WXY-ZZ-00-DR-A-0001",
+                "P01",
+                "Basement",
+                "For Status Change",
+            )
+        },
+    )
+    result = check_document_list(
+        [_drawing(project="J106309", revision="P02")], index, layout
+    )[0]
+    assert result.document_control_report is False
+    assert not result.portal_blocks_upload
+    assert result.portal_status == "For Status Change"
+
+
 def test_skips_asite_comments_report(tmp_path: Path):
     layout = _layout()
     comments = tmp_path / "BR Comments Report 070926.xlsx"

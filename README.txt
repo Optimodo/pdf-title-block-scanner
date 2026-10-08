@@ -51,9 +51,7 @@ help pull out or standardise the reference part so names match our filing rules.
     drawing number, title, revision, and so on) and compares that with the
     file name. It also checks things like spelling and the revision history.
     It writes an Excel report. If drawings need CAD changes, it also writes
-    a short designer workbook for email and a plain text list you can copy
-    into a CDE comment (drawing number, title, and what to change; one
-    drawing at a time, with a blank line between them). If the number on
+    a short designer workbook for email. If the number on
     the file does not match the title block, it will ask if you want the
     file renamed (the rest of the name is kept). Paired CAD files are
     renamed too if you say yes. If you have put a portal document list in
